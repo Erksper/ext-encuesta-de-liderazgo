@@ -2,7 +2,7 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
     
     return Dep.extend({
         
-        template: 'encuesta-de-liderazgo:/index',
+        template: 'encuesta-de-liderazgo:index',
         
         events: {
             'click .report-button': 'onReportClick',
@@ -32,13 +32,6 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
         },
         
         cargarCategoriasParaReportes: function() {
-            // Verificar si la entidad existe en los metadatos para evitar errores 404
-            if (!this.getMetadata().get('scopes.EncuestaLiderazgoCategoria')) {
-                console.log('La entidad EncuestaLiderazgoCategoria no existe, se omitirá la carga de reportes por categoría.');
-                this.wait(false);
-                return;
-            }
-
             this.getCollectionFactory().create('EncuestaLiderazgoCategoria', function(collection) {
                 collection.fetch({
                     data: {
@@ -59,15 +52,8 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
                     }.bind(this));
                     
                     this.wait(false);
-                    this.reRender(); // Re-renderizar para mostrar los nuevos reportes
                 }.bind(this)).catch(function(xhr) {
-                    // Si el error es 404, es el problema del controlador que no existe.
-                    if (xhr.status === 404) {
-                        console.warn("ADVERTENCIA: No se pudieron cargar las categorías de reportes. La entidad 'EncuestaLiderazgoCategoria' no tiene una API activa en el backend. Por favor, verifica que la entidad exista y ejecuta un Rebuild exitoso en EspoCRM.");
-                    } else {
-                        // Para otros posibles errores (ej. 500, timeout, etc.)
-                        console.error('Error inesperado al cargar categorías para reportes:', xhr);
-                    }
+                    console.warn('No se pudieron cargar categorías. Probablemente no hay ninguna creada aún.');
                     this.wait(false);
                 }.bind(this));
             }.bind(this));
@@ -136,7 +122,6 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
         },
         
         iniciarProcesoDeCarga: async function(contenidoCSV) {
-            // Parsear CSV usando punto y coma como delimitador
             var todasLasLineas = contenidoCSV.split('\n').filter(l => l.trim());
             
             if (todasLasLineas.length < 2) {
@@ -148,8 +133,8 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             var headers = this.parsearLineaCSV(todasLasLineas[0]);
             var lineasDeDatos = todasLasLineas.slice(1);
 
-            // PASO 1: Cargar preguntas desde el sistema (simulado)
-            const preguntasGuardadas = await this._simularFetchPreguntasGuardadas();
+            // PASO 1: Cargar preguntas desde la BD
+            const preguntasGuardadas = await this.fetchPreguntasGuardadas();
 
             // PASO 2: Cargar preguntas desde el archivo CSV
             const preguntasDelCSV = this.extraerPreguntasDeHeaders(headers);
@@ -169,18 +154,50 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             // PASO 6: Mostrar inconsistencias (errores de fila)
             if (erroresDeFila.length > 0) {
                 const mensajeError = 'Algunas filas del CSV fueron omitidas por errores:<br>' + erroresDeFila.join('<br>');
-                Espo.Ui.warning(mensajeError, 10000); // Mostrar por 10 segundos
+                Espo.Ui.warning(mensajeError, 10000);
                 console.warn('Errores de fila en CSV:', erroresDeFila);
             }
 
             if (encuestasValidas.length === 0) {
-                Espo.Ui.error('No se encontraron filas de datos válidas en el archivo CSV después de las validaciones.');
+                Espo.Ui.error('No se encontraron filas de datos válidas en el archivo CSV.');
                 this.wait(false);
                 return;
             }
 
-            // Mostrar el preview final
-            this.mostrarPreview(encuestasValidas, preguntasDelCSV, nuevasPreguntasParaAgregar.length);
+            // PASO 7: Guardar en la base de datos
+            await this.guardarDatosEnBD(encuestasValidas, nuevasPreguntasParaAgregar, preguntasDelCSV);
+        },
+
+        fetchPreguntasGuardadas: function() {
+            return new Promise(function(resolve, reject) {
+                this.getCollectionFactory().create('EncuestaLiderazgoPregunta', function(collection) {
+                    collection.fetch({
+                        data: {
+                            maxSize: 500,
+                            where: [{ type: 'equals', attribute: 'activa', value: true }]
+                        }
+                    }).then(function() {
+                        var preguntas = collection.models.map(function(model) {
+                            // Obtener el nombre de la categoría
+                            var categoriaId = model.get('categoriaLiderazgoId');
+                            var categoriaNombre = model.get('categoriaLiderazgoName') || 'General';
+                            
+                            return {
+                                id: model.id,
+                                texto: model.get('pregunta'),
+                                categoria: categoriaNombre,
+                                tipo: model.get('tipo'),
+                                categoriaId: categoriaId
+                            };
+                        });
+                        console.log('Preguntas cargadas desde BD:', preguntas);
+                        resolve(preguntas);
+                    }.bind(this)).catch(function(error) {
+                        console.log('No se pudieron cargar preguntas:', error);
+                        resolve([]);
+                    });
+                }.bind(this));
+            }.bind(this));
         },
 
         gestionarPreguntas: function(preguntasDelCSV, preguntasGuardadas, lineasDeDatos, headers) {
@@ -188,15 +205,13 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
 
             // CASO A: No hay preguntas en el sistema
             if (preguntasGuardadas.length === 0) {
-                console.log("No hay preguntas guardadas. Se intentarán agregar todas las del CSV.");
+                console.log("No hay preguntas guardadas. Se agregarán todas las del CSV.");
                 if (lineasDeDatos.length < 3) {
                     return { esValido: false, error: "Se necesitan al menos 3 registros de datos en el CSV para determinar el tipo de las nuevas preguntas." };
                 }
-                // Determinar tipo para todas las preguntas del CSV
                 preguntasDelCSV.forEach(p => {
                     p.tipo = this.determinarTipoPreguntaPorMuestreo(p, lineasDeDatos, headers);
                 });
-                console.log("Tipos determinados para nuevas preguntas:", preguntasDelCSV);
                 return { esValido: true, todasLasPreguntas: preguntasDelCSV, nuevasPreguntasParaAgregar: preguntasDelCSV };
             }
 
@@ -207,24 +222,22 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             // Validar que todas las preguntas del sistema estén en el CSV
             for (const preguntaGuardada of preguntasGuardadas) {
                 if (!preguntasCSVUnicas.has(uniqueKey(preguntaGuardada))) {
-                    return { esValido: false, error: `Validación fallida: El archivo CSV no contiene la pregunta requerida "${preguntaGuardada.texto}" en la categoría "${preguntaGuardada.categoria}".` };
+                    return { esValido: false, error: `El CSV no contiene la pregunta requerida "${preguntaGuardada.texto}" en la categoría "${preguntaGuardada.categoria}".` };
                 }
             }
 
-            // Identificar preguntas nuevas para agregar
+            // Identificar preguntas nuevas
             let nuevasPreguntas = preguntasDelCSV.filter(p => !preguntasGuardadasUnicas.has(uniqueKey(p)));
             let nuevasPreguntasParaAgregar = [];
             
             if (nuevasPreguntas.length > 0) {
                 if (lineasDeDatos.length < 3) {
-                    Espo.Ui.warning("Se encontraron preguntas nuevas en el CSV, pero se ignorarán porque se necesitan al menos 3 registros de datos para procesarlas.", 7000);
+                    Espo.Ui.warning("Se encontraron preguntas nuevas pero se ignorarán (se necesitan al menos 3 registros).", 7000);
                 } else {
-                    // Determinar tipo para las nuevas preguntas
                     nuevasPreguntas.forEach(p => {
                         p.tipo = this.determinarTipoPreguntaPorMuestreo(p, lineasDeDatos, headers);
                     });
                     nuevasPreguntasParaAgregar = nuevasPreguntas;
-                    console.log("Nuevas preguntas a agregar (con tipo determinado):", nuevasPreguntasParaAgregar);
                 }
             }
 
@@ -234,9 +247,9 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
 
         determinarTipoPreguntaPorMuestreo: function(pregunta, lineasDeDatos, headers) {
             const indicePregunta = headers.indexOf(pregunta.headerOriginal);
-            if (indicePregunta === -1) return 'texto'; // Fallback
+            if (indicePregunta === -1) return 'texto';
 
-            const muestras = lineasDeDatos.slice(0, 10); // Tomar hasta 10 muestras
+            const muestras = lineasDeDatos.slice(0, 10);
             let conteoTipos = { seleccion_simple: 0, texto: 0 };
 
             muestras.forEach(linea => {
@@ -250,7 +263,6 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
                 }
             });
 
-            // La que tenga más votos gana. En caso de empate, prioriza seleccion_simple.
             return conteoTipos.seleccion_simple >= conteoTipos.texto ? 'seleccion_simple' : 'texto';
         },
         
@@ -291,7 +303,6 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
         parsearFecha: function(fechaStr) {
             if (!fechaStr) return '';
             
-            // Formato: 3/22/2025 13:47:42 -> 2025-03-22
             var partes = fechaStr.split(' ')[0].split('/');
             
             if (partes.length === 3) {
@@ -306,23 +317,20 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
         
         extraerPreguntasDeHeaders: function(headers) {
             const preguntas = [];
+            const indiceTimestamp = this.encontrarIndiceColumna(headers, ['timestamp', 'fecha']);
+            const indiceCLA = this.encontrarIndiceColumna(headers, ['cla', 'cla pertenece']);
+            const indiceOficina = this.encontrarIndiceColumna(headers, ['oficina', 'oficinas']);
+            const indiceLider = this.encontrarIndiceColumna(headers, ['lider', 'líder', 'lider a evaluar']);
+            const indiceInicioPrguntas = Math.max(indiceTimestamp, indiceCLA, indiceOficina, indiceLider) + 1;
             
-            headers.forEach(function(header) {
-                if (!header.trim()) {
-                    return; // Omitir headers vacíos
+            headers.forEach(function(header, index) {
+                if (!header.trim() || index < indiceInicioPrguntas) {
+                    return;
                 }
                 
                 var categoria = 'General';
                 let textoPregunta = header;
                 
-                // Encontrar dónde empiezan las preguntas (después de las 4 columnas base)
-                const indiceTimestamp = this.encontrarIndiceColumna(headers, ['timestamp', 'fecha']);
-                const indiceCLA = this.encontrarIndiceColumna(headers, ['cla', 'cla pertenece']);
-                const indiceOficina = this.encontrarIndiceColumna(headers, ['oficina', 'oficinas']);
-                const indiceLider = this.encontrarIndiceColumna(headers, ['lider', 'líder', 'lider a evaluar']);
-                const indiceInicioPrguntas = Math.max(indiceTimestamp, indiceCLA, indiceOficina, indiceLider) + 1;
-                
-                // Intentar extraer categoría si está en formato "Categoria: [Pregunta]"
                 const match = header.match(/^(.+?):\s*\[(.+?)\]$/);
                 
                 if (match) {
@@ -332,27 +340,22 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
                     textoPregunta = this.normalizarTexto(header);
                 }
                 
-                if (headers.indexOf(header) >= indiceInicioPrguntas) {
-                    preguntas.push({
-                        categoria: categoria,
-                        texto: textoPregunta,
-                        headerOriginal: header
-                    });
-                }
+                preguntas.push({
+                    categoria: categoria,
+                    texto: textoPregunta,
+                    headerOriginal: header
+                });
             }.bind(this));
-            console.log('Preguntas extraídas:', preguntas);
+            
             return preguntas;
         },
         
         normalizarTexto: function(texto) {
             if (!texto) return '';
             
-            // Formato de oración: primera letra en mayúscula, el resto en minúscula.
             texto = texto.trim().toLowerCase();
             if (texto.length === 0) return texto;
 
-            // Capitaliza la primera letra y une el resto.
-            // También capitaliza la letra después de un punto y un espacio.
             texto = texto.charAt(0).toUpperCase() + texto.slice(1);
             return texto.replace(/([.?!])\s*([a-z])/g, (match, punc, char) => `${punc} ${char.toUpperCase()}`);
         },
@@ -362,33 +365,11 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             
             var valorTrim = valor.trim();
             
-            // Si parece un número entero, lo tratamos como selección simple para la validación posterior.
             if (/^\d+$/.test(valorTrim)) {
                 return 'seleccion_simple';
             }
             
             return 'texto';
-        },
-        
-        _simularFetchPreguntasGuardadas: function() {
-            console.log("Simulando fetch de preguntas guardadas en la BD...");
-            
-            // Devuelve una promesa para simular una llamada asíncrona
-            return new Promise(function(resolve) {
-                // CASO 1: No hay preguntas en la BD
-                // resolve([]);
-                
-                // CASO 2: Ya hay 4 preguntas en la BD
-                var preguntasSimuladas = [
-                    { texto: 'Comparte información de manera asertiva', categoria: 'Comunicación', tipo: 'seleccion_simple' },
-                    { texto: 'Escucha activamente y es receptivo a las opiniones del equipo', categoria: 'Comunicación', tipo: 'seleccion_simple' },
-                    { texto: 'Presta y demuestra atención plena en las conversaciones', categoria: 'Comunicación', tipo: 'seleccion_simple' },
-                    { texto: 'Expresa sus ideas con claridad y respeto a otras personas', categoria: 'Comunicación', tipo: 'seleccion_simple' }
-                ];
-                
-                console.log("Preguntas simuladas desde BD:", preguntasSimuladas);
-                resolve(preguntasSimuladas);
-            });
         },
 
         procesarFilasDeEncuestas: function(lineasDeDatos, headers, todasLasPreguntas) {
@@ -405,11 +386,11 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             const indiceInicioPrguntas = Math.max(indiceTimestamp, indiceCLA, indiceOficina, indiceLider) + 1;
 
             lineasDeDatos.forEach((linea, index) => {
-                const numeroFila = index + 2; // +1 por el header, +1 por el índice base 0
+                const numeroFila = index + 2;
                 const valores = this.parsearLineaCSV(linea);
 
                 if (valores.length !== headers.length) {
-                    erroresDeFila.push(`Fila ${numeroFila}: Se omitió porque tiene ${valores.length} columnas en lugar de las ${headers.length} esperadas.`);
+                    erroresDeFila.push(`Fila ${numeroFila}: Omitida (${valores.length} columnas en lugar de ${headers.length}).`);
                     return;
                 }
 
@@ -429,19 +410,16 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
                     const tipoDeterminado = this.determinarTipoRespuesta(valorRespuesta);
                     const tipoEsperado = mapaTiposPreguntas.get(uniqueKey(preguntaInfo));
 
-                    // Solo procesar y validar si la pregunta existe en nuestro set final de preguntas
                     if (tipoEsperado) {
-                        // Validar rango para selección simple
                         if (tipoEsperado === 'seleccion_simple' && valorRespuesta) {
                             const valorNumerico = parseInt(valorRespuesta.trim(), 10);
                             if (isNaN(valorNumerico) || valorNumerico < 1 || valorNumerico > 4) {
-                                erroresDeFila.push(`Fila ${numeroFila}: Valor inválido ('${valorRespuesta}') para la pregunta "${preguntaInfo.texto}". Se omitió la fila.`);
+                                erroresDeFila.push(`Fila ${numeroFila}: Valor inválido ('${valorRespuesta}') para "${preguntaInfo.texto}".`);
                                 esFilaValida = false;
                                 break;
                             }
                         }
                         
-                        // Si la pregunta es válida, agregar su respuesta
                         encuesta.respuestas.push({
                             pregunta: preguntaInfo.texto,
                             categoria: preguntaInfo.categoria,
@@ -459,64 +437,361 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             return { encuestasValidas, erroresDeFila };
         },
 
-        mostrarPreview: function(datosEncuestas, preguntasInfo, totalPreguntasParaAgregar) {
-            // Calcular estadísticas
-            var categoriasUnicas = new Set();
-            var preguntasUnicas = new Set();
-            var totalRespuestas = 0;
-            const uniqueKey = p => `${p.categoria}::${p.texto}`;
-            
-            preguntasInfo.forEach(function(p) {
-                categoriasUnicas.add(p.categoria);
-                preguntasUnicas.add(uniqueKey(p));
+        guardarDatosEnBD: async function(encuestasValidas, nuevasPreguntasParaAgregar, preguntasDelCSV) {
+            try {
+                Espo.Ui.notify('Guardando datos en la base de datos...', 'info');
+                
+                // PASO 1: Verificar/Crear usuario por defecto "0"
+                const usuarioDefectoId = await this.obtenerOCrearUsuarioDefecto();
+                
+                // PASO 2: Guardar categorías nuevas y obtener mapeo id
+                const mapaCategorias = await this.guardarCategorias(preguntasDelCSV);
+                
+                // PASO 3: Guardar preguntas nuevas y obtener mapeo completo
+                const mapaPreguntas = await this.guardarPreguntas(nuevasPreguntasParaAgregar, mapaCategorias);
+                
+                // PASO 4: Guardar encuestas y respuestas
+                await this.guardarEncuestasYRespuestas(encuestasValidas, usuarioDefectoId, mapaPreguntas);
+                
+                this.wait(false);
+                Espo.Ui.success('¡Datos guardados exitosamente! Total: ' + encuestasValidas.length + ' encuestas.');
+                
+                // Limpiar preview
+                this.datosPreview = null;
+                this.mostrarPreviewTabla = false;
+                this.$el.find('#csv-file-input').val('');
+                this.reRender();
+                
+            } catch (error) {
+                console.error('Error guardando datos:', error);
+                Espo.Ui.error('Error al guardar los datos: ' + (error.message || error));
+                this.wait(false);
+            }
+        },
+
+        obtenerOCrearUsuarioDefecto: function() {
+            return new Promise(function(resolve, reject) {
+                this.getCollectionFactory().create('User', function(collection) {
+                    collection.fetch({
+                        data: {
+                            where: [{ type: 'equals', attribute: 'name', value: '0' }]
+                        }
+                    }).then(function() {
+                        if (collection.length > 0) {
+                            resolve(collection.at(0).id);
+                        } else {
+                            // Crear usuario "0"
+                            this.getModelFactory().create('User', function(model) {
+                                model.set({
+                                    userName: '0',
+                                    name: '0',
+                                    type: 'regular'
+                                });
+                                model.save().then(function() {
+                                    resolve(model.id);
+                                }).catch(reject);
+                            }.bind(this));
+                        }
+                    }.bind(this)).catch(reject);
+                }.bind(this));
             }.bind(this));
-            
-            datosEncuestas.forEach(function(e) {
-                totalRespuestas += e.respuestas.length;
-            });
-            
-            this.datosPreview = {
-                totalEncuestas: datosEncuestas.length, // Encuestas que pasaron todas las validaciones
-                categoriasUnicas: categoriasUnicas.size,
-                preguntasUnicasEnCSV: preguntasUnicas.size, // Total de preguntas únicas en el archivo
-                preguntasParaAgregar: totalPreguntasParaAgregar, // Preguntas que no existen en la BD
-                totalRespuestas: totalRespuestas // Total de respuestas en las encuestas válidas
-            };
-            
-            // Generar tabla de preview
-            this.tablaPreviewHTML = this.generarTablaPreview(datosEncuestas);
-            this.mostrarPreviewTabla = true;
-            
-            this.wait(false);
-            this.reRender();
-            
-            Espo.Ui.success('CSV procesado y validado correctamente. Revisa el preview abajo.');
+        },
+
+        guardarCategorias: function(preguntasDelCSV) {
+            return new Promise(function(resolve, reject) {
+                const categoriasUnicas = [...new Set(preguntasDelCSV.map(p => p.categoria))];
+                const mapaCategorias = {};
+                let procesadas = 0;
+                
+                if (categoriasUnicas.length === 0) {
+                    resolve(mapaCategorias);
+                    return;
+                }
+                
+                categoriasUnicas.forEach(function(nombreCategoria) {
+                    this.getCollectionFactory().create('EncuestaLiderazgoCategoria', function(collection) {
+                        collection.fetch({
+                            data: {
+                                where: [{ type: 'equals', attribute: 'name', value: nombreCategoria }]
+                            }
+                        }).then(function() {
+                            if (collection.length > 0) {
+                                mapaCategorias[nombreCategoria] = collection.at(0).id;
+                                procesadas++;
+                                if (procesadas === categoriasUnicas.length) resolve(mapaCategorias);
+                            } else {
+                                // Crear nueva categoría
+                                this.getModelFactory().create('EncuestaLiderazgoCategoria', function(model) {
+                                    model.set({
+                                        name: nombreCategoria,
+                                        orden: Object.keys(mapaCategorias).length
+                                    });
+                                    model.save().then(function() {
+                                        mapaCategorias[nombreCategoria] = model.id;
+                                        procesadas++;
+                                        if (procesadas === categoriasUnicas.length) resolve(mapaCategorias);
+                                    }).catch(reject);
+                                }.bind(this));
+                            }
+                        }.bind(this)).catch(reject);
+                    }.bind(this));
+                }.bind(this));
+            }.bind(this));
+        },
+
+        guardarPreguntas: function(nuevasPreguntasParaAgregar, mapaCategorias) {
+            return new Promise(function(resolve, reject) {
+                const mapaPreguntas = {};
+                
+                if (nuevasPreguntasParaAgregar.length === 0) {
+                    // Cargar todas las preguntas existentes
+                    this.fetchPreguntasGuardadas().then(function(preguntas) {
+                        preguntas.forEach(function(p) {
+                            mapaPreguntas[`${p.categoria}::${p.texto}`] = p.id;
+                        });
+                        resolve(mapaPreguntas);
+                    }).catch(reject);
+                    return;
+                }
+                
+                let procesadas = 0;
+                
+                nuevasPreguntasParaAgregar.forEach(function(pregunta) {
+                    this.getModelFactory().create('EncuestaLiderazgoPregunta', function(model) {
+                        model.set({
+                            name: pregunta.texto.substring(0, 50) + '...',
+                            pregunta: pregunta.texto,
+                            tipo: pregunta.tipo,
+                            categoriaLiderazgoId: mapaCategorias[pregunta.categoria],
+                            activa: true
+                        });
+                        model.save().then(function() {
+                            mapaPreguntas[`${pregunta.categoria}::${pregunta.texto}`] = model.id;
+                            procesadas++;
+                            if (procesadas === nuevasPreguntasParaAgregar.length) {
+                                // Cargar también las existentes
+                                this.fetchPreguntasGuardadas().then(function(preguntas) {
+                                    preguntas.forEach(function(p) {
+                                        if (!mapaPreguntas[`${p.categoria}::${p.texto}`]) {
+                                            mapaPreguntas[`${p.categoria}::${p.texto}`] = p.id;
+                                        }
+                                    });
+                                    resolve(mapaPreguntas);
+                                }).catch(reject);
+                            }
+                        }.bind(this)).catch(reject);
+                    }.bind(this));
+                }.bind(this));
+            }.bind(this));
+        },
+
+        guardarEncuestasYRespuestas: function(encuestasValidas, usuarioDefectoId, mapaPreguntas) {
+            return new Promise(function(resolve, reject) {
+                let procesadas = 0;
+                let errores = [];
+                
+                const procesarEncuesta = function(encuesta) {
+                    console.log('Procesando encuesta para líder:', encuesta.liderEvaluado);
+                    
+                    // Buscar usuario evaluado por nombre
+                    this.buscarUsuarioPorNombre(encuesta.liderEvaluado).then(function(usuarioEvaluadoId) {
+                        console.log('Usuario encontrado ID:', usuarioEvaluadoId, 'para nombre:', encuesta.liderEvaluado);
+                        
+                        if (!usuarioEvaluadoId) {
+                            console.warn('No se encontró usuario con nombre:', encuesta.liderEvaluado);
+                            errores.push('Fila ' + encuesta.numeroFila + ': Usuario "' + encuesta.liderEvaluado + '" no encontrado.');
+                            procesadas++;
+                            if (procesadas === encuestasValidas.length) {
+                                if (errores.length > 0) {
+                                    console.warn('Encuestas no guardadas por usuarios no encontrados:', errores);
+                                    Espo.Ui.warning('Se omitieron ' + errores.length + ' encuestas porque no se encontraron los usuarios evaluados.', 8000);
+                                }
+                                resolve();
+                            }
+                            return;
+                        }
+                        
+                        // Buscar teams (CLA y Oficina)
+                        Promise.all([
+                            this.buscarTeamPorNombre(encuesta.cla),
+                            this.buscarTeamPorNombre(encuesta.oficina)
+                        ]).then(function(results) {
+                            const claTeamId = results[0];
+                            const oficinaTeamId = results[1];
+                            
+                            console.log('Teams encontrados - CLA:', claTeamId, 'Oficina:', oficinaTeamId);
+                            
+                            this.getModelFactory().create('EncuestaLiderazgo', function(model) {
+                                const datos = {
+                                    name: 'Evaluación ' + encuesta.liderEvaluado + ' - ' + encuesta.fecha,
+                                    fecha: encuesta.fecha,
+                                    usuarioId: usuarioDefectoId,
+                                    usuarioEvaluadoId: usuarioEvaluadoId
+                                };
+                                
+                                if (claTeamId) datos.claTeamId = claTeamId;
+                                if (oficinaTeamId) datos.oficinaTeamId = oficinaTeamId;
+                                
+                                console.log('Datos a guardar en encuesta:', datos);
+                                
+                                model.set(datos);
+                                
+                                model.save().then(function() {
+                                    const encuestaId = model.id;
+                                    console.log('Encuesta guardada con ID:', encuestaId);
+                                    
+                                    // Guardar respuestas
+                                    this.guardarRespuestas(encuestaId, encuesta.respuestas, mapaPreguntas).then(function() {
+                                        procesadas++;
+                                        console.log('Progreso:', procesadas, '/', encuestasValidas.length);
+                                        if (procesadas === encuestasValidas.length) {
+                                            if (errores.length > 0) {
+                                                console.warn('Encuestas no guardadas:', errores);
+                                                Espo.Ui.warning('Se guardaron ' + (procesadas - errores.length) + ' de ' + encuestasValidas.length + ' encuestas. Algunas filas tenían usuarios no encontrados.', 8000);
+                                            }
+                                            resolve();
+                                        }
+                                    }).catch(reject);
+                                }.bind(this)).catch(function(error) {
+                                    console.error('Error guardando encuesta:', error);
+                                    errores.push('Fila ' + encuesta.numeroFila + ': Error al guardar.');
+                                    procesadas++;
+                                    if (procesadas === encuestasValidas.length) {
+                                        if (errores.length > 0) {
+                                            Espo.Ui.warning('Se omitieron ' + errores.length + ' encuestas por errores.', 8000);
+                                        }
+                                        resolve();
+                                    }
+                                });
+                            }.bind(this));
+                        }.bind(this)).catch(function(error) {
+                            console.error('Error buscando teams:', error);
+                            reject(error);
+                        });
+                    }.bind(this)).catch(function(error) {
+                        console.error('Error buscando usuario:', error);
+                        reject(error);
+                    });
+                }.bind(this);
+                
+                encuestasValidas.forEach(procesarEncuesta);
+            }.bind(this));
         },
         
-        generarTablaPreview: function(datosEncuestas) {
-            var html = '<table class="table table-bordered preview-table">';
-            html += '<thead><tr>';
-            html += '<th>Fecha</th>';
-            html += '<th>CLA</th>';
-            html += '<th>Oficina</th>';
-            html += '<th>Líder Evaluado</th>';
-            html += '<th>Total Respuestas</th>';
-            html += '</tr></thead>';
-            html += '<tbody>';
-            
-            datosEncuestas.forEach(function(encuesta) {
-                html += '<tr>';
-                html += '<td>' + encuesta.fecha + '</td>';
-                html += '<td>' + encuesta.cla + '</td>';
-                html += '<td>' + encuesta.oficina + '</td>';
-                html += '<td>' + encuesta.liderEvaluado + '</td>';
-                html += '<td>' + encuesta.respuestas.length + '</td>';
-                html += '</tr>';
-            });
-            
-            html += '</tbody></table>';
-            
-            return html;
+        buscarUsuarioPorNombre: function(nombre) {
+            return new Promise(function(resolve, reject) {
+                if (!nombre || !nombre.trim()) {
+                    console.log('Búsqueda de usuario: nombre vacío');
+                    resolve(null);
+                    return;
+                }
+                
+                console.log('Buscando usuario con nombre:', nombre);
+                
+                this.getCollectionFactory().create('User', function(collection) {
+                    // Búsqueda exclusiva por nombre completo exacto
+                    collection.fetch({
+                        data: {
+                            where: [
+                                { type: 'equals', attribute: 'name', value: nombre }
+                            ],
+                            maxSize: 2
+                        }
+                    }).then(function() {
+                        console.log('Resultados búsqueda exacta:', collection.length);
+                        
+                        if (collection.length === 1) {
+                            console.log('Usuario encontrado (exacto):', collection.at(0).get('name'));
+                            resolve(collection.at(0).id);
+                        } else {
+                            if (collection.length > 1) {
+                                console.warn('Se encontró más de un usuario con el nombre "' + nombre + '". La encuesta para esta fila será omitida.');
+                            } else {
+                                console.log('Usuario no encontrado:', nombre);
+                            }
+                            resolve(null);
+                        }
+                    }.bind(this)).catch(function(error) {
+                        console.error('Error en búsqueda de usuario:', error);
+                        resolve(null);
+                    });
+                }.bind(this));
+            }.bind(this));
+        },
+        
+        buscarTeamPorNombre: function(nombre) {
+            return new Promise(function(resolve, reject) {
+                if (!nombre || !nombre.trim()) {
+                    resolve(null);
+                    return;
+                }
+                
+                this.getCollectionFactory().create('Team', function(collection) {
+                    collection.fetch({
+                        data: {
+                            where: [
+                                {
+                                    type: 'or',
+                                    value: [
+                                        { type: 'equals', attribute: 'name', value: nombre },
+                                        { type: 'contains', attribute: 'name', value: nombre }
+                                    ]
+                                }
+                            ],
+                            maxSize: 1
+                        }
+                    }).then(function() {
+                        if (collection.length > 0) {
+                            resolve(collection.at(0).id);
+                        } else {
+                            resolve(null);
+                        }
+                    }).catch(function() {
+                        resolve(null);
+                    });
+                }.bind(this));
+            }.bind(this));
+        },
+
+        guardarRespuestas: function(encuestaId, respuestas, mapaPreguntas) {
+            return new Promise(function(resolve, reject) {
+                let procesadas = 0;
+                
+                if (respuestas.length === 0) {
+                    resolve();
+                    return;
+                }
+                
+                respuestas.forEach(function(respuesta) {
+                    const preguntaId = mapaPreguntas[`${respuesta.categoria}::${respuesta.pregunta}`];
+                    
+                    if (!preguntaId) {
+                        console.warn('No se encontró ID para pregunta:', respuesta.pregunta);
+                        procesadas++;
+                        if (procesadas === respuestas.length) resolve();
+                        return;
+                    }
+                    
+                    this.getModelFactory().create('EncuestaLiderazgoRespuesta', function(model) {
+                        const datos = {
+                            encuestaLiderazgoId: encuestaId,
+                            preguntaId: preguntaId
+                        };
+                        
+                        if (respuesta.tipo === 'seleccion_simple') {
+                            datos.seleccion = respuesta.valor;
+                        } else {
+                            datos.texto = respuesta.valor;
+                        }
+                        
+                        model.set(datos);
+                        model.save().then(function() {
+                            procesadas++;
+                            if (procesadas === respuestas.length) resolve();
+                        }).catch(reject);
+                    }.bind(this));
+                }.bind(this));
+            }.bind(this));
         }
         
     });
