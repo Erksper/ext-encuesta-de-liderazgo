@@ -1,0 +1,92 @@
+{
+    "fields": {
+        "name": {
+            "type": "varchar",
+            "required": true,
+            "trim": true,
+            "maxLength": 255
+        },
+        "fecha": {
+            "type": "date",
+            "required": true
+        },
+        "usuario": {
+            "type": "link",
+            "entity": "User"
+        },
+        "usuarioEvaluado": {
+            "type": "link",
+            "entity": "User",
+            "required": true
+        },
+        "claTeam": {
+            "type": "link",
+            "entity": "Team"
+        },
+        "oficinaTeam": {
+            "type": "link",
+            "entity": "Team"
+        },
+        "createdAt": {
+            "type": "datetime",
+            "readOnly": true
+        },
+        "modifiedAt": {
+            "type": "datetime",
+            "readOnly": true
+        },
+        "createdBy": {
+            "type": "link",
+            "entity": "User",
+            "readOnly": true
+        },
+        "modifiedBy": {
+            "type": "link",
+            "entity": "User",
+            "readOnly": true
+        }
+    },
+    "links": {
+        "usuario": {
+            "type": "belongsTo",
+            "entity": "User"
+        },
+        "usuarioEvaluado": {
+            "type": "belongsTo",
+            "entity": "User"
+        },
+        "claTeam": {
+            "type": "belongsTo",
+            "entity": "Team"
+        },
+        "oficinaTeam": {
+            "type": "belongsTo",
+            "entity": "Team"
+        },
+        "respuestas": {
+            "type": "hasMany",
+            "entity": "EncuestaLiderazgoRespuesta",
+            "foreign": "encuestaLiderazgo"
+        },
+        "createdBy": {
+            "type": "belongsTo",
+            "entity": "User"
+        },
+        "modifiedBy": {
+            "type": "belongsTo",
+            "entity": "User"
+        }
+    },
+    "collection": {
+        "orderBy": "fecha",
+        "order": "desc"
+    },
+    "indexes": {
+        "fecha": {
+            "columns": ["fecha", "deleted"]
+        },
+        "usuarioEvaluado": {
+            "columns": ["usuario_evaluado_id", "deleted"]
+        }
+    }
+}

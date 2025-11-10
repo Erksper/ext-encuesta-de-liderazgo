@@ -1,0 +1,42 @@
+{
+    "fields": {
+        "name": {
+            "type": "varchar",
+            "required": true,
+            "trim": true,
+            "maxLength": 255
+        },
+        "informacion": {
+            "type": "text",
+            "rows": 10
+        },
+        "orden": {
+            "type": "int",
+            "default": 0
+        },
+        "createdAt": {
+            "type": "datetime",
+            "readOnly": true
+        },
+        "modifiedAt": {
+            "type": "datetime",
+            "readOnly": true
+        }
+    },
+    "links": {
+        "preguntas": {
+            "type": "hasMany",
+            "entity": "EncuestaLiderazgoPregunta",
+            "foreign": "categoria"
+        }
+    },
+    "collection": {
+        "orderBy": "orden",
+        "order": "asc"
+    },
+    "indexes": {
+        "name": {
+            "columns": ["name", "deleted"]
+        }
+    }
+}

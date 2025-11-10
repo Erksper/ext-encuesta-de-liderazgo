@@ -1,0 +1,18 @@
+[
+    {
+        "route": "/Liderazgo",
+        "method": "get",
+        "params": {
+            "controller": "Base",
+            "action": "index"
+        }
+    },
+    {
+        "route": "/Liderazgo/:action",
+        "method": "get",
+        "params": {
+            "controller": "Base",
+            "action": ":action"
+        }
+    }
+]

@@ -1,0 +1,66 @@
+{
+    "fields": {
+        "name": {
+            "type": "varchar",
+            "required": false,
+            "trim": true,
+            "maxLength": 255
+        },
+        "encuestaLiderazgo": {
+            "type": "link",
+            "entity": "EncuestaLiderazgo",
+            "required": true
+        },
+        "pregunta": {
+            "type": "link",
+            "entity": "EncuestaLiderazgoPregunta",
+            "required": true
+        },
+        "seleccion": {
+            "type": "enum",
+            "options": ["4", "3", "2", "1"],
+            "optionsLabels": {
+                "4": "(4) Siempre",
+                "3": "(3) Casi siempre",
+                "2": "(2) Pocas veces",
+                "1": "(1) Nunca"
+            }
+        },
+        "texto": {
+            "type": "text",
+            "rows": 6
+        },
+        "createdAt": {
+            "type": "datetime",
+            "readOnly": true
+        },
+        "modifiedAt": {
+            "type": "datetime",
+            "readOnly": true
+        }
+    },
+    "links": {
+        "encuestaLiderazgo": {
+            "type": "belongsTo",
+            "entity": "EncuestaLiderazgo",
+            "foreign": "respuestas"
+        },
+        "pregunta": {
+            "type": "belongsTo",
+            "entity": "EncuestaLiderazgoPregunta",
+            "foreign": "respuestas"
+        }
+    },
+    "collection": {
+        "orderBy": "createdAt",
+        "order": "desc"
+    },
+    "indexes": {
+        "encuestaLiderazgo": {
+            "columns": ["encuesta_liderazgo_id", "deleted"]
+        },
+        "pregunta": {
+            "columns": ["pregunta_id", "deleted"]
+        }
+    }
+}

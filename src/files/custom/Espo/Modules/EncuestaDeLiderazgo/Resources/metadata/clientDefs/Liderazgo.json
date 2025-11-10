@@ -1,0 +1,14 @@
+{
+    "controller": "controllers/record",
+    "views": {
+        "list": "encuesta-de-liderazgo:views/index",
+        "detail": "encuesta-de-liderazgo:views/index"
+    },
+    "recordViews": {
+        "list": "views/record/list"
+    },
+    "menu": {
+        "list": []
+    },
+    "checkForDuplicatesInQuickCreate": false
+}

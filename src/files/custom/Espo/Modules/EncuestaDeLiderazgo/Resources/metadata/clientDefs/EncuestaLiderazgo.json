@@ -1,0 +1,7 @@
+{
+    "controller": "controllers/record",
+    "menu": {
+        "list": []
+    },
+    "checkForDuplicatesInQuickCreate": false
+}

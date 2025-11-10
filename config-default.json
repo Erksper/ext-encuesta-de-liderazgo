@@ -7,15 +7,15 @@
         "host": "localhost",
         "port": null,
         "charset": "utf8mb4",
-        "dbname": "ext-{@nameHyphen}",
+        "dbname": "ext-encuesta-de-liderazgo",
         "user": "root",
         "password": ""
     },
     "install": {
-        "language": "en_US",
+        "language": "es_ES",
         "defaultOwner": "www-data",
         "defaultGroup": "www-data",
-        "siteUrl": "http://localhost/ext-{@nameHyphen}/site",
+        "siteUrl": "http://localhost/ext-encuesta-de-liderazgo/site",
         "adminUsername": "admin",
         "adminPassword": "1"
     }
