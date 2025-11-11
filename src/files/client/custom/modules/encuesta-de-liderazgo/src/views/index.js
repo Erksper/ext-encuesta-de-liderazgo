@@ -85,7 +85,30 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             
             console.log('Reporte seleccionado:', reportId, reportLabel);
             
-            Espo.Ui.notify('Reporte "' + reportLabel + '" en desarrollo', 'info');
+            // Crear iframe para mostrar el reporte
+            var reportPath = this.obtenerRutaReporte(reportId);
+            
+            this.createView('iframe-view', 'views/iframe', {
+                url: reportPath,
+                name: reportLabel
+            }, function(view) {
+                this.$el.find('.record-container').hide();
+                this.$el.append('<div class="report-iframe-container"></div>');
+                view.setElement(this.$el.find('.report-iframe-container'));
+                view.render();
+            }.bind(this));
+        },
+
+        obtenerRutaReporte: function(reportId) {
+            var basePath = 'client/custom/modules/encuesta-de-liderazgo/res/reportes/';
+            
+            if (reportId === 'evaluacion-general') {
+                return basePath + 'evaluacion-general.html';
+            }
+            
+            // Para reportes de categorías, pasar parámetros en la URL
+            var categoria = reportId.replace('detalle-', '');
+            return basePath + 'categoria-detalle.html?cat=' + encodeURIComponent(categoria);
         },
         
         procesarCSV: function() {
@@ -133,7 +156,7 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             var headers = this.parsearLineaCSV(todasLasLineas[0]);
             var lineasDeDatos = todasLasLineas.slice(1);
 
-            // PASO 1: Cargar preguntas desde la BD
+            // PASO 1: Cargar preguntas desde la BD con paginación
             const preguntasGuardadas = await this.fetchPreguntasGuardadas();
 
             // PASO 2: Cargar preguntas desde el archivo CSV
@@ -155,7 +178,6 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             if (erroresDeFila.length > 0) {
                 const mensajeError = 'Algunas filas del CSV fueron omitidas por errores:<br>' + erroresDeFila.join('<br>');
                 Espo.Ui.warning(mensajeError, 10000);
-                console.warn('Errores de fila en CSV:', erroresDeFila);
             }
 
             if (encuestasValidas.length === 0) {
@@ -170,42 +192,60 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
 
         fetchPreguntasGuardadas: function() {
             return new Promise(function(resolve, reject) {
-                this.getCollectionFactory().create('EncuestaLiderazgoPregunta', function(collection) {
-                    collection.fetch({
-                        data: {
-                            maxSize: 500,
-                            where: [{ type: 'equals', attribute: 'activa', value: true }]
-                        }
-                    }).then(function() {
-                        var preguntas = collection.models.map(function(model) {
-                            // Obtener el nombre de la categoría
-                            var categoriaId = model.get('categoriaLiderazgoId');
-                            var categoriaNombre = model.get('categoriaLiderazgoName') || 'General';
+                const maxSize = 200; // Tamaño del lote
+                let todasLasPreguntas = [];
+                
+                const fetchPage = (offset) => {
+                    this.getCollectionFactory().create('EncuestaLiderazgoPregunta', function(collection) {
+                        collection.maxSize = maxSize;
+                        collection.offset = offset;
+                        
+                        collection.fetch().then(function() {
+                            const models = collection.models || [];
                             
-                            return {
-                                id: model.id,
-                                texto: model.get('pregunta'),
-                                categoria: categoriaNombre,
-                                tipo: model.get('tipo'),
-                                categoriaId: categoriaId
-                            };
+                            // Procesar las preguntas del lote actual
+                            const preguntasLote = models.map(function(model) {
+                                var categoriaId = model.get('categoriaLiderazgoId');
+                                var categoriaNombre = model.get('categoriaLiderazgoName') || 'General';
+                                
+                                return {
+                                    id: model.id,
+                                    texto: model.get('pregunta'),
+                                    categoria: categoriaNombre,
+                                    tipo: model.get('tipo'),
+                                    categoriaId: categoriaId
+                                };
+                            });
+                            
+                            todasLasPreguntas = todasLasPreguntas.concat(preguntasLote);
+                            
+                            // Si cargamos menos del máximo, significa que no hay más páginas
+                            if (models.length < maxSize || todasLasPreguntas.length >= collection.total) {
+                                resolve(todasLasPreguntas);
+                            } else {
+                                // Cargar siguiente página
+                                fetchPage(offset + maxSize);
+                            }
+                            
+                        }.bind(this)).catch(function(error) {
+                            console.error('Error cargando lote de preguntas:', error);
+                            // Devolver lo que se haya cargado hasta ahora
+                            resolve(todasLasPreguntas);
                         });
-                        console.log('Preguntas cargadas desde BD:', preguntas);
-                        resolve(preguntas);
-                    }.bind(this)).catch(function(error) {
-                        console.log('No se pudieron cargar preguntas:', error);
-                        resolve([]);
-                    });
-                }.bind(this));
+                    }.bind(this));
+                };
+                
+                // Iniciar con la primera página
+                fetchPage(0);
+                
             }.bind(this));
         },
 
         gestionarPreguntas: function(preguntasDelCSV, preguntasGuardadas, lineasDeDatos, headers) {
-            const uniqueKey = p => `${p.categoria}::${p.texto}`;
+            const uniqueKey = p => `${p.categoria.toLowerCase()}::${p.texto.toLowerCase()}`;
 
             // CASO A: No hay preguntas en el sistema
             if (preguntasGuardadas.length === 0) {
-                console.log("No hay preguntas guardadas. Se agregarán todas las del CSV.");
                 if (lineasDeDatos.length < 3) {
                     return { esValido: false, error: "Se necesitan al menos 3 registros de datos en el CSV para determinar el tipo de las nuevas preguntas." };
                 }
@@ -216,24 +256,35 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             }
 
             // CASO B: Hay preguntas en el sistema
-            const preguntasGuardadasUnicas = new Set(preguntasGuardadas.map(uniqueKey));
+            const preguntasGuardadasMap = new Map();
+            preguntasGuardadas.forEach(function(p) {
+                preguntasGuardadasMap.set(uniqueKey(p), p);
+            });
+            
             const preguntasCSVUnicas = new Set(preguntasDelCSV.map(uniqueKey));
 
             // Validar que todas las preguntas del sistema estén en el CSV
+            let preguntasFaltantes = [];
             for (const preguntaGuardada of preguntasGuardadas) {
-                if (!preguntasCSVUnicas.has(uniqueKey(preguntaGuardada))) {
-                    return { esValido: false, error: `El CSV no contiene la pregunta requerida "${preguntaGuardada.texto}" en la categoría "${preguntaGuardada.categoria}".` };
+                const key = uniqueKey(preguntaGuardada);
+                if (!preguntasCSVUnicas.has(key)) {
+                    preguntasFaltantes.push(`"${preguntaGuardada.texto}" en categoría "${preguntaGuardada.categoria}"`);
                 }
             }
 
-            // Identificar preguntas nuevas
-            let nuevasPreguntas = preguntasDelCSV.filter(p => !preguntasGuardadasUnicas.has(uniqueKey(p)));
+            if (preguntasFaltantes.length > 0) {
+                return { 
+                    esValido: false, 
+                    error: `El CSV no contiene las siguientes preguntas requeridas: ${preguntasFaltantes.join(', ')}` 
+                };
+            }
+
+            // Identificar preguntas nuevas (las que están en CSV pero NO en BD)
+            let nuevasPreguntas = preguntasDelCSV.filter(p => !preguntasGuardadasMap.has(uniqueKey(p)));
             let nuevasPreguntasParaAgregar = [];
             
             if (nuevasPreguntas.length > 0) {
-                if (lineasDeDatos.length < 3) {
-                    Espo.Ui.warning("Se encontraron preguntas nuevas pero se ignorarán (se necesitan al menos 3 registros).", 7000);
-                } else {
+                if (lineasDeDatos.length >= 3) {
                     nuevasPreguntas.forEach(p => {
                         p.tipo = this.determinarTipoPreguntaPorMuestreo(p, lineasDeDatos, headers);
                     });
@@ -241,7 +292,9 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
                 }
             }
 
+            // Combinar preguntas guardadas con las nuevas (sin duplicados)
             const todasLasPreguntas = preguntasGuardadas.concat(nuevasPreguntasParaAgregar);
+            
             return { esValido: true, todasLasPreguntas, nuevasPreguntasParaAgregar };
         },
 
@@ -375,7 +428,7 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
         procesarFilasDeEncuestas: function(lineasDeDatos, headers, todasLasPreguntas) {
             const encuestasValidas = [];
             const erroresDeFila = [];
-            const uniqueKey = p => `${p.categoria}::${p.texto}`;
+            const uniqueKey = p => `${p.categoria.toLowerCase()}::${p.texto.toLowerCase()}`;
             const mapaTiposPreguntas = new Map(todasLasPreguntas.map(p => [uniqueKey(p), p.tipo]));
             const preguntasDelCSV = this.extraerPreguntasDeHeaders(headers);
 
@@ -439,8 +492,6 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
 
         guardarDatosEnBD: async function(encuestasValidas, nuevasPreguntasParaAgregar, preguntasDelCSV) {
             try {
-                Espo.Ui.notify('Guardando datos en la base de datos...', 'info');
-                
                 // PASO 1: Verificar/Crear usuario por defecto "0"
                 const usuarioDefectoId = await this.obtenerOCrearUsuarioDefecto();
                 
@@ -451,10 +502,20 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
                 const mapaPreguntas = await this.guardarPreguntas(nuevasPreguntasParaAgregar, mapaCategorias);
                 
                 // PASO 4: Guardar encuestas y respuestas
-                await this.guardarEncuestasYRespuestas(encuestasValidas, usuarioDefectoId, mapaPreguntas);
+                const resultado = await this.guardarEncuestasYRespuestas(encuestasValidas, usuarioDefectoId, mapaPreguntas);
                 
                 this.wait(false);
-                Espo.Ui.success('¡Datos guardados exitosamente! Total: ' + encuestasValidas.length + ' encuestas.');
+                
+                if (resultado.errores.length > 0) {
+                    Espo.Ui.warning(
+                        `¡Proceso completado con observaciones!<br>` +
+                        `Encuestas guardadas: ${resultado.guardadas}/${resultado.total}<br>` +
+                        `Errores: ${resultado.errores.length}`,
+                        10000
+                    );
+                } else {
+                    Espo.Ui.success(`¡Datos guardados exitosamente!<br>Total: ${resultado.guardadas} encuestas procesadas.`);
+                }
                 
                 // Limpiar preview
                 this.datosPreview = null;
@@ -543,45 +604,85 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             return new Promise(function(resolve, reject) {
                 const mapaPreguntas = {};
                 
-                if (nuevasPreguntasParaAgregar.length === 0) {
-                    // Cargar todas las preguntas existentes
-                    this.fetchPreguntasGuardadas().then(function(preguntas) {
-                        preguntas.forEach(function(p) {
-                            mapaPreguntas[`${p.categoria}::${p.texto}`] = p.id;
-                        });
+                // Primero cargar TODAS las preguntas existentes
+                this.fetchPreguntasGuardadas().then(function(preguntasExistentes) {
+                    console.log("Preguntas existentes cargadas para mapeo:", preguntasExistentes.length);
+                    
+                    preguntasExistentes.forEach(function(p) {
+                        const key = `${p.categoria.toLowerCase()}::${p.texto.toLowerCase()}`;
+                        mapaPreguntas[key] = p.id;
+                    });
+                    
+                    console.log("Mapa de preguntas existentes creado con", Object.keys(mapaPreguntas).length, "entradas");
+                    
+                    if (nuevasPreguntasParaAgregar.length === 0) {
+                        console.log("No hay preguntas nuevas para agregar, usando solo las existentes");
                         resolve(mapaPreguntas);
-                    }).catch(reject);
-                    return;
-                }
-                
-                let procesadas = 0;
-                
-                nuevasPreguntasParaAgregar.forEach(function(pregunta) {
-                    this.getModelFactory().create('EncuestaLiderazgoPregunta', function(model) {
-                        model.set({
-                            name: pregunta.texto.substring(0, 50) + '...',
-                            pregunta: pregunta.texto,
-                            tipo: pregunta.tipo,
-                            categoriaLiderazgoId: mapaCategorias[pregunta.categoria],
-                            activa: true
-                        });
-                        model.save().then(function() {
-                            mapaPreguntas[`${pregunta.categoria}::${pregunta.texto}`] = model.id;
-                            procesadas++;
-                            if (procesadas === nuevasPreguntasParaAgregar.length) {
-                                // Cargar también las existentes
-                                this.fetchPreguntasGuardadas().then(function(preguntas) {
-                                    preguntas.forEach(function(p) {
-                                        if (!mapaPreguntas[`${p.categoria}::${p.texto}`]) {
-                                            mapaPreguntas[`${p.categoria}::${p.texto}`] = p.id;
-                                        }
-                                    });
-                                    resolve(mapaPreguntas);
-                                }).catch(reject);
+                        return;
+                    }
+                    
+                    console.log("Guardando", nuevasPreguntasParaAgregar.length, "preguntas nuevas...");
+                    
+                    let procesadas = 0;
+                    let erroresGuardado = [];
+                    
+                    // Función para guardar una pregunta individual
+                    const guardarPregunta = (index) => {
+                        if (index >= nuevasPreguntasParaAgregar.length) {
+                            console.log("Todas las preguntas nuevas guardadas. Total en mapa:", Object.keys(mapaPreguntas).length);
+                            if (erroresGuardado.length > 0) {
+                                console.warn("Errores al guardar preguntas:", erroresGuardado);
                             }
-                        }.bind(this)).catch(reject);
-                    }.bind(this));
-                }.bind(this));
+                            resolve(mapaPreguntas);
+                            return;
+                        }
+                        
+                        const pregunta = nuevasPreguntasParaAgregar[index];
+                        
+                        this.getModelFactory().create('EncuestaLiderazgoPregunta', function(model) {
+                            const nombreCorto = pregunta.texto.length > 50 
+                                ? pregunta.texto.substring(0, 47) + '...'
+                                : pregunta.texto;
+                            
+                            model.set({
+                                name: nombreCorto,
+                                pregunta: pregunta.texto,
+                                tipo: pregunta.tipo,
+                                categoriaLiderazgoId: mapaCategorias[pregunta.categoria],
+                                activa: true
+                            });
+                            
+                            model.save().then(function() {
+                                const key = `${pregunta.categoria.toLowerCase()}::${pregunta.texto.toLowerCase()}`;
+                                mapaPreguntas[key] = model.id;
+                                procesadas++;
+                                console.log(`Pregunta guardada ${procesadas}/${nuevasPreguntasParaAgregar.length}: ${nombreCorto}`);
+                                
+                                // Pequeño delay antes de guardar la siguiente pregunta
+                                setTimeout(() => {
+                                    guardarPregunta(index + 1);
+                                }, 50); // 50ms de delay entre preguntas
+                                
+                            }).catch(function(error) {
+                                console.error("Error guardando pregunta:", error);
+                                erroresGuardado.push(`Error en pregunta "${pregunta.texto}": ${error.message}`);
+                                procesadas++;
+                                
+                                // Continuar con la siguiente pregunta aunque falle
+                                setTimeout(() => {
+                                    guardarPregunta(index + 1);
+                                }, 50);
+                            });
+                        }.bind(this));
+                    };
+                    
+                    // Iniciar el proceso en serie
+                    guardarPregunta(0);
+                    
+                }.bind(this)).catch(function(error) {
+                    console.error("Error cargando preguntas existentes:", error);
+                    reject(error);
+                });
             }.bind(this));
         },
 
@@ -589,126 +690,167 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             return new Promise(function(resolve, reject) {
                 let procesadas = 0;
                 let errores = [];
+                let encuestasGuardadas = 0;
                 
-                const procesarEncuesta = function(encuesta) {
-                    console.log('Procesando encuesta para líder:', encuesta.liderEvaluado);
-                    
-                    // Buscar usuario evaluado por nombre
-                    this.buscarUsuarioPorNombre(encuesta.liderEvaluado).then(function(usuarioEvaluadoId) {
-                        console.log('Usuario encontrado ID:', usuarioEvaluadoId, 'para nombre:', encuesta.liderEvaluado);
-                        
-                        if (!usuarioEvaluadoId) {
-                            console.warn('No se encontró usuario con nombre:', encuesta.liderEvaluado);
-                            errores.push('Fila ' + encuesta.numeroFila + ': Usuario "' + encuesta.liderEvaluado + '" no encontrado.');
-                            procesadas++;
-                            if (procesadas === encuestasValidas.length) {
-                                if (errores.length > 0) {
-                                    console.warn('Encuestas no guardadas por usuarios no encontrados:', errores);
-                                    Espo.Ui.warning('Se omitieron ' + errores.length + ' encuestas porque no se encontraron los usuarios evaluados.', 8000);
+                if (encuestasValidas.length === 0) {
+                    resolve({ guardadas: 0, errores: [] });
+                    return;
+                }
+                
+                const procesarEncuesta = function(encuesta, index) {
+                    return new Promise(function(resolveEncuesta, rejectEncuesta) {
+                        // Agregar delay entre encuestas
+                        setTimeout(function() {
+                            this.buscarUsuarioPorNombre(encuesta.liderEvaluado).then(function(usuarioEvaluado) {
+                                if (!usuarioEvaluado || !usuarioEvaluado.id) {
+                                    errores.push('Fila ' + encuesta.numeroFila + ': Usuario "' + encuesta.liderEvaluado + '" no encontrado.');
+                                    resolveEncuesta();
+                                    return;
                                 }
-                                resolve();
-                            }
-                            return;
-                        }
-                        
-                        // Buscar teams (CLA y Oficina)
-                        Promise.all([
-                            this.buscarTeamPorNombre(encuesta.cla),
-                            this.buscarTeamPorNombre(encuesta.oficina)
-                        ]).then(function(results) {
-                            const claTeamId = results[0];
-                            const oficinaTeamId = results[1];
-                            
-                            console.log('Teams encontrados - CLA:', claTeamId, 'Oficina:', oficinaTeamId);
-                            
-                            this.getModelFactory().create('EncuestaLiderazgo', function(model) {
-                                const datos = {
-                                    name: 'Evaluación ' + encuesta.liderEvaluado + ' - ' + encuesta.fecha,
-                                    fecha: encuesta.fecha,
-                                    usuarioId: usuarioDefectoId,
-                                    usuarioEvaluadoId: usuarioEvaluadoId
-                                };
                                 
-                                if (claTeamId) datos.claTeamId = claTeamId;
-                                if (oficinaTeamId) datos.oficinaTeamId = oficinaTeamId;
-                                
-                                console.log('Datos a guardar en encuesta:', datos);
-                                
-                                model.set(datos);
-                                
-                                model.save().then(function() {
-                                    const encuestaId = model.id;
-                                    console.log('Encuesta guardada con ID:', encuestaId);
+                                this.getModelFactory().create('EncuestaLiderazgo', function(model) {
+                                    const datos = {
+                                        name: 'Evaluación ' + encuesta.liderEvaluado + ' - ' + encuesta.fecha,
+                                        fecha: encuesta.fecha,
+                                        usuarioId: usuarioDefectoId,
+                                        usuarioEvaluadoId: usuarioEvaluado.id
+                                    };
                                     
-                                    // Guardar respuestas
-                                    this.guardarRespuestas(encuestaId, encuesta.respuestas, mapaPreguntas).then(function() {
-                                        procesadas++;
-                                        console.log('Progreso:', procesadas, '/', encuestasValidas.length);
-                                        if (procesadas === encuestasValidas.length) {
-                                            if (errores.length > 0) {
-                                                console.warn('Encuestas no guardadas:', errores);
-                                                Espo.Ui.warning('Se guardaron ' + (procesadas - errores.length) + ' de ' + encuestasValidas.length + ' encuestas. Algunas filas tenían usuarios no encontrados.', 8000);
-                                            }
-                                            resolve();
-                                        }
-                                    }).catch(reject);
-                                }.bind(this)).catch(function(error) {
-                                    console.error('Error guardando encuesta:', error);
-                                    errores.push('Fila ' + encuesta.numeroFila + ': Error al guardar.');
-                                    procesadas++;
-                                    if (procesadas === encuestasValidas.length) {
-                                        if (errores.length > 0) {
-                                            Espo.Ui.warning('Se omitieron ' + errores.length + ' encuestas por errores.', 8000);
-                                        }
-                                        resolve();
-                                    }
-                                });
-                            }.bind(this));
-                        }.bind(this)).catch(function(error) {
-                            console.error('Error buscando teams:', error);
-                            reject(error);
-                        });
-                    }.bind(this)).catch(function(error) {
-                        console.error('Error buscando usuario:', error);
-                        reject(error);
-                    });
+                                    if (usuarioEvaluado.claTeamId) datos.claTeamId = usuarioEvaluado.claTeamId;
+                                    if (usuarioEvaluado.oficinaTeamId) datos.oficinaTeamId = usuarioEvaluado.oficinaTeamId;
+                                    
+                                    model.set(datos);
+                                    
+                                    model.save().then(function() {
+                                        const encuestaId = model.id;
+                                        encuestasGuardadas++;
+                                        
+                                        // Guardar respuestas con más delay
+                                        setTimeout(function() {
+                                            this.guardarRespuestasEnLotes(encuestaId, encuesta.respuestas, mapaPreguntas).then(function() {
+                                                resolveEncuesta();
+                                            }).catch(function(error) {
+                                                console.error('Error guardando respuestas:', error);
+                                                errores.push('Fila ' + encuesta.numeroFila + ': Error al guardar respuestas.');
+                                                resolveEncuesta();
+                                            });
+                                        }.bind(this), 100);
+                                        
+                                    }.bind(this)).catch(function(error) {
+                                        console.error('Error guardando encuesta:', error);
+                                        errores.push('Fila ' + encuesta.numeroFila + ': Error al guardar encuesta.');
+                                        resolveEncuesta();
+                                    });
+                                }.bind(this));
+                            }.bind(this)).catch(function(error) {
+                                console.error('Error buscando usuario:', error);
+                                errores.push('Fila ' + encuesta.numeroFila + ': Error buscando usuario.');
+                                resolveEncuesta();
+                            });
+                        }.bind(this), index * 500); // Delay progresivo entre encuestas
+                    }.bind(this));
                 }.bind(this);
                 
-                encuestasValidas.forEach(procesarEncuesta);
+                // Procesar encuestas en serie para evitar sobrecarga
+                const procesarEnSerie = function(index) {
+                    if (index >= encuestasValidas.length) {
+                        resolve({ 
+                            guardadas: encuestasGuardadas, 
+                            errores: errores,
+                            total: encuestasValidas.length 
+                        });
+                        return;
+                    }
+                    
+                    Espo.Ui.notify(`Guardando encuesta ${index + 1} de ${encuestasValidas.length}...`, 'info');
+
+                    procesarEncuesta(encuestasValidas[index], index).then(function() {
+                        procesarEnSerie(index + 1);
+                    });
+                };
+                
+                // Iniciar el procesamiento en serie
+                procesarEnSerie(0);
             }.bind(this));
         },
         
         buscarUsuarioPorNombre: function(nombre) {
             return new Promise(function(resolve, reject) {
                 if (!nombre || !nombre.trim()) {
-                    console.log('Búsqueda de usuario: nombre vacío');
                     resolve(null);
                     return;
                 }
                 
-                console.log('Buscando usuario con nombre:', nombre);
+                const nombreLimpio = nombre.trim();
                 
                 this.getCollectionFactory().create('User', function(collection) {
-                    // Búsqueda exclusiva por nombre completo exacto
                     collection.fetch({
                         data: {
                             where: [
-                                { type: 'equals', attribute: 'name', value: nombre }
+                                { type: 'equals', attribute: 'name', value: nombreLimpio }
                             ],
-                            maxSize: 2
+                            maxSize: 1
                         }
                     }).then(function() {
-                        console.log('Resultados búsqueda exacta:', collection.length);
-                        
-                        if (collection.length === 1) {
-                            console.log('Usuario encontrado (exacto):', collection.at(0).get('name'));
-                            resolve(collection.at(0).id);
-                        } else {
-                            if (collection.length > 1) {
-                                console.warn('Se encontró más de un usuario con el nombre "' + nombre + '". La encuesta para esta fila será omitida.');
+                        if (collection.length > 0) {
+                            const usuarioEncontrado = collection.at(0);
+                            
+                            // Obtener los teams del usuario - usar la relación directamente
+                            const teamsIds = usuarioEncontrado.get('teamsIds') || [];
+                            
+                            // Si no hay teams en la relación directa, intentar cargar el usuario completo
+                            if (teamsIds.length === 0) {
+                                usuarioEncontrado.fetch().then(function() {
+                                    const teamsCompletos = usuarioEncontrado.get('teamsIds') || [];
+                                    
+                                    let claTeamId = null;
+                                    let oficinaTeamId = null;
+                                    
+                                    teamsCompletos.forEach(function(teamId) {
+                                        if (teamId && (teamId.startsWith('CLA') || teamId.toLowerCase().includes('cla'))) {
+                                            claTeamId = teamId;
+                                        } else if (teamId && !oficinaTeamId) {
+                                            // El primer team que no sea CLA es la oficina
+                                            oficinaTeamId = teamId;
+                                        }
+                                    });
+                                    
+                                    resolve({
+                                        id: usuarioEncontrado.id,
+                                        name: usuarioEncontrado.get('name'),
+                                        claTeamId: claTeamId,
+                                        oficinaTeamId: oficinaTeamId
+                                    });
+                                }).catch(function(error) {
+                                    console.error('Error cargando usuario completo:', error);
+                                    resolve({
+                                        id: usuarioEncontrado.id,
+                                        name: usuarioEncontrado.get('name'),
+                                        claTeamId: null,
+                                        oficinaTeamId: null
+                                    });
+                                });
                             } else {
-                                console.log('Usuario no encontrado:', nombre);
+                                let claTeamId = null;
+                                let oficinaTeamId = null;
+                                
+                                teamsIds.forEach(function(teamId) {
+                                    if (teamId && (teamId.startsWith('CLA') || teamId.toLowerCase().includes('cla'))) {
+                                        claTeamId = teamId;
+                                    } else if (teamId && !oficinaTeamId) {
+                                        // El primer team que no sea CLA es la oficina
+                                        oficinaTeamId = teamId;
+                                    }
+                                });
+                                
+                                resolve({
+                                    id: usuarioEncontrado.id,
+                                    name: usuarioEncontrado.get('name'),
+                                    claTeamId: claTeamId,
+                                    oficinaTeamId: oficinaTeamId
+                                });
                             }
+                        } else {
                             resolve(null);
                         }
                     }.bind(this)).catch(function(error) {
@@ -753,44 +895,68 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             }.bind(this));
         },
 
-        guardarRespuestas: function(encuestaId, respuestas, mapaPreguntas) {
+        guardarRespuestasEnLotes: function(encuestaId, respuestas, mapaPreguntas) {
             return new Promise(function(resolve, reject) {
                 let procesadas = 0;
+                let errores = [];
                 
                 if (respuestas.length === 0) {
                     resolve();
                     return;
                 }
                 
-                respuestas.forEach(function(respuesta) {
-                    const preguntaId = mapaPreguntas[`${respuesta.categoria}::${respuesta.pregunta}`];
-                    
-                    if (!preguntaId) {
-                        console.warn('No se encontró ID para pregunta:', respuesta.pregunta);
-                        procesadas++;
-                        if (procesadas === respuestas.length) resolve();
-                        return;
-                    }
-                    
-                    this.getModelFactory().create('EncuestaLiderazgoRespuesta', function(model) {
-                        const datos = {
-                            encuestaLiderazgoId: encuestaId,
-                            preguntaId: preguntaId
-                        };
+                const guardarRespuestaIndividual = function(respuesta, index) {
+                    return new Promise(function(resolveIndividual, rejectIndividual) {
+                        const key = `${respuesta.categoria.toLowerCase()}::${respuesta.pregunta.toLowerCase()}`;
+                        const preguntaId = mapaPreguntas[key];
                         
-                        if (respuesta.tipo === 'seleccion_simple') {
-                            datos.seleccion = respuesta.valor;
-                        } else {
-                            datos.texto = respuesta.valor;
+                        if (!preguntaId) {
+                            resolveIndividual();
+                            return;
                         }
                         
-                        model.set(datos);
-                        model.save().then(function() {
-                            procesadas++;
-                            if (procesadas === respuestas.length) resolve();
-                        }).catch(reject);
+                        this.getModelFactory().create('EncuestaLiderazgoRespuesta', function(model) {
+                            const datos = {
+                                encuestaLiderazgoId: encuestaId,
+                                preguntaId: preguntaId
+                            };
+                            
+                            if (respuesta.tipo === 'seleccion_simple') {
+                                datos.seleccion = parseInt(respuesta.valor, 10);
+                            } else {
+                                datos.texto = respuesta.valor;
+                            }
+                            
+                            model.set(datos);
+                            
+                            // Agregar timeout para evitar sobrecarga
+                            setTimeout(function() {
+                                model.save().then(function() {
+                                    resolveIndividual();
+                                }).catch(function(error) {
+                                    console.error('Error guardando respuesta:', error);
+                                    errores.push(`Error en respuesta ${index + 1}: ${error.message}`);
+                                    resolveIndividual(); // Resolver igual para continuar
+                                });
+                            }, 50 * index); // Espaciar las requests
+                            
+                        }.bind(this));
                     }.bind(this));
-                }.bind(this));
+                }.bind(this);
+                
+                // Crear un array de promesas para todas las respuestas
+                const promesas = [];
+                respuestas.forEach(function(respuesta, index) {
+                    promesas.push(guardarRespuestaIndividual(respuesta, index));
+                });
+                
+                // Esperar a que todas las respuestas se procesen
+                Promise.all(promesas).then(function() {
+                    resolve();
+                }).catch(function(error) {
+                    console.error('Error en guardado de respuestas:', error);
+                    resolve(); // Resolver igual para no bloquear el proceso
+                });
             }.bind(this));
         }
         
