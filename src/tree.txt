@@ -1,0 +1,74 @@
+Listado de rutas de carpetas
+El n£mero de serie del volumen es 98EF-792C
+C:.
+|   tree.txt
+|   
++---files
+|   +---client
+|   |   \---custom
+|   |       \---modules
+|   |           \---encuesta-de-liderazgo
+|   |               +---res
+|   |               |   \---templates
+|   |               |           .dummy
+|   |               |           categoria-detalle.tpl
+|   |               |           evaluacion-general.tpl
+|   |               |           index.tpl
+|   |               |           
+|   |               \---src
+|   |                   \---views
+|   |                           .dummy
+|   |                           categoria-detalle.js
+|   |                           evaluacion-general.js
+|   |                           index.js
+|   |                           
+|   \---custom
+|       \---Espo
+|           \---Modules
+|               \---EncuestaDeLiderazgo
+|                   +---Controllers
+|                   |       EncuestaLiderazgo.php
+|                   |       EncuestaLiderazgoCategoria.php
+|                   |       EncuestaLiderazgoPregunta.php
+|                   |       EncuestaLiderazgoRespuesta.php
+|                   |       
+|                   +---i18n
+|                   |   +---en_US
+|                   |   |       Global.json
+|                   |   |       
+|                   |   \---es_ES
+|                   |           Global.json
+|                   |           
+|                   \---Resources
+|                       |   module.json
+|                       |   routes.json
+|                       |   
+|                       \---metadata
+|                           +---app
+|                           |       client.json
+|                           |       
+|                           +---clientDefs
+|                           |       EncuestaLiderazgo.json
+|                           |       EncuestaLiderazgoCategoria.json
+|                           |       EncuestaLiderazgoPregunta.json
+|                           |       EncuestaLiderazgoRespuesta.json
+|                           |       Liderazgo.json
+|                           |       
+|                           +---entityDefs
+|                           |       EncuestaLiderazgo.json
+|                           |       EncuestaLiderazgoCategoria.json
+|                           |       EncuestaLiderazgoPregunta.json
+|                           |       EncuestaLiderazgoRespuesta.json
+|                           |       Liderazgo.json
+|                           |       
+|                           \---scopes
+|                                   EncuestaLiderazgo.json
+|                                   EncuestaLiderazgoCategoria.json
+|                                   EncuestaLiderazgoPregunta.json
+|                                   EncuestaLiderazgoRespuesta.json
+|                                   Liderazgo.json
+|                                   
+\---scripts
+        AfterInstall.php
+        AfterUninstall.php
+        

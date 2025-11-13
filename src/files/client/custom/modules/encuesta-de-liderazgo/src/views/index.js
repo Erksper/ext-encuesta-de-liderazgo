@@ -83,20 +83,38 @@ define('encuesta-de-liderazgo:views/index', ['view'], function (Dep) {
             var reportId = $(e.currentTarget).data('report-id');
             var reportLabel = $(e.currentTarget).data('report-label');
             
-            console.log('Reporte seleccionado:', reportId, reportLabel);
+            console.log('Navegando a reporte:', reportId, reportLabel);
             
-            // Crear iframe para mostrar el reporte
-            var reportPath = this.obtenerRutaReporte(reportId);
+            if (reportId === 'evaluacion-general') {
+                this.getRouter().navigate('#Liderazgo/reports/general', {trigger: true});
+            } else {
+                // Es un reporte de categoría
+                var categoriaEncoded = encodeURIComponent(reportLabel);
+                this.getRouter().navigate('#Liderazgo/reports/categoria/' + categoriaEncoded, {trigger: true});
+            }
+        },
+
+        addBackButton: function(container) {
+            // Verificar si ya existe el botón
+            if (container.find('.btn-back-to-menu').length > 0) return;
             
-            this.createView('iframe-view', 'views/iframe', {
-                url: reportPath,
-                name: reportLabel
-            }, function(view) {
-                this.$el.find('.record-container').hide();
-                this.$el.append('<div class="report-iframe-container"></div>');
-                view.setElement(this.$el.find('.report-iframe-container'));
-                view.render();
+            var backButton = $('<div style="margin-bottom: 20px;">' +
+                '<button class="btn btn-default btn-back-to-menu">' +
+                '<i class="fas fa-arrow-left"></i> Volver al Menú' +
+                '</button>' +
+                '</div>');
+            
+            container.prepend(backButton);
+            
+            container.find('.btn-back-to-menu').on('click', function() {
+                container.empty().hide();
+                this.$el.find('.record-container').show();
+                this.clearView('reportView');
             }.bind(this));
+        },
+
+        getViewClass: function(viewName) {
+            return define.require(viewName);
         },
 
         obtenerRutaReporte: function(reportId) {

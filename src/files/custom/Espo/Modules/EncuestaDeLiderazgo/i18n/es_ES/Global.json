@@ -1,0 +1,16 @@
+{
+    "labels": {
+        "EncuestaDeLiderazgo": "Encuesta de Liderazgo",
+        "EncuestaLiderazgo": "Encuesta Liderazgo", 
+        "EncuestaLiderazgoCategoria": "Categoría Encuesta",
+        "EncuestaLiderazgoPregunta": "Pregunta Encuesta",
+        "EncuestaLiderazgoRespuesta": "Respuesta Encuesta",
+        "Liderazgo": "Liderazgo"
+    },
+    "fieldLabels": {
+        "name": "Nombre",
+        "assignedUser": "Usuario asignado",
+        "createdAt": "Creado en",
+        "modifiedAt": "Modificado en"
+    }
+}
