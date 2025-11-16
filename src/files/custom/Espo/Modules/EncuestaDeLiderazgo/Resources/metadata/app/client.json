@@ -1,12 +1,2 @@
 {
-    "scopePermission": {
-        "EncuestaLiderazgoCategoria": true,
-    "controller": "controllers/liderazgo",
-    "views": {
-        "detail": "encuesta-de-liderazgo:views/index"
-    },
-    "scripts": [
-        "client/custom/modules/encuesta-de-liderazgo/res/chart.min.js"
-    ]
-}
 }

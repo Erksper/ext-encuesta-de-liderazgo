@@ -1,10 +1,10 @@
 <div class="reporte-liderazgo-container">
     <div class="reporte-header">
-        <div class="logo-c21">
-            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <text x="50" y="60" font-size="40" font-weight="bold" fill="#B8A279" text-anchor="middle">C21</text>
-            </svg>
-        </div>
+        {{#if esAdmin}}
+        <a href="#Liderazgo/admin" class="btn-admin">
+            <i class="fas fa-cog"></i> Administración
+        </a>
+        {{/if}}
         <h2>Evaluación General de Liderazgo</h2>
         <p>Análisis completo por categorías de competencias</p>
     </div>
@@ -41,7 +41,26 @@
 
         <div id="content-area" style="display: none;">
             <div class="stats-summary" id="stats-summary"></div>
+            
+            <!-- Gráfico de Promedios por Categoría -->
+            <div class="promedios-chart-card" id="promedios-chart-container">
+                <h3>Promedio General por Categoría</h3>
+                <div class="promedios-chart-wrapper">
+                    <canvas id="promedios-chart"></canvas>
+                </div>
+            </div>
+            
             <div class="charts-grid" id="charts-grid"></div>
+            
+            <!-- Sección de Sugerencias (solo visible cuando hay usuario seleccionado) -->
+            <div class="sugerencias-card" id="sugerencias-card" style="display: none;">
+                <h3>Sugerencias y Recomendaciones</h3>
+                <div id="sugerencias-content">
+                    <p class="loading-sugerencias">
+                        <i class="fas fa-spinner fa-spin"></i> Cargando sugerencias...
+                    </p>
+                </div>
+            </div>
         </div>
 
         <div id="no-data-area" class="text-center" style="display: none; padding: 60px;">
@@ -67,15 +86,29 @@
     position: relative;
 }
 
-.logo-c21 {
+.btn-admin {
     position: absolute;
     top: 20px;
     right: 30px;
-    width: 60px;
-    height: 60px;
-    background: white;
-    padding: 5px;
-    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.btn-admin:hover {
+    background: rgba(255, 255, 255, 0.3);
+    color: white;
+    text-decoration: none;
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.btn-admin i {
+    margin-right: 5px;
 }
 
 .reporte-header h2 {
@@ -150,14 +183,14 @@
 
 .charts-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: 25px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
 }
 
 .chart-card {
     background: white;
     border-radius: 8px;
-    padding: 20px;
+    padding: 15px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     transition: transform 0.3s, box-shadow 0.3s;
 }
@@ -169,32 +202,86 @@
 
 .chart-card h3 {
     color: #333;
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    padding-bottom: 10px;
+    border-bottom: 3px solid #B8A279;
+}
+
+.chart-wrapper {
+    position: relative;
+    height: 180px;
+    max-height: 300px;
+}
+
+.promedios-chart-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    margin-bottom: 25px;
+}
+
+.promedios-chart-card h3 {
+    color: #333;
     margin: 0 0 20px 0;
     font-size: 18px;
     padding-bottom: 12px;
     border-bottom: 3px solid #B8A279;
 }
 
-.chart-wrapper {
+.promedios-chart-wrapper {
     position: relative;
     height: 300px;
+    max-height: 350px;
+}
+
+.sugerencias-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    margin-top: 25px;
+}
+
+.sugerencias-card h3 {
+    color: #333;
+    margin: 0 0 20px 0;
+    font-size: 18px;
+    padding-bottom: 12px;
+    border-bottom: 3px solid #B8A279;
+}
+
+#sugerencias-content {
+    min-height: 100px;
+}
+
+.loading-sugerencias {
+    text-align: center;
+    color: #666;
+    padding: 40px;
+}
+
+.sugerencia-item {
+    background: #f9f9f9;
+    border-left: 4px solid #B8A279;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
+.sugerencia-item h4 {
+    margin: 0 0 10px 0;
+    color: #B8A279;
+    font-size: 16px;
+}
+
+.sugerencia-item p {
+    margin: 0;
+    color: #555;
+    line-height: 1.6;
 }
 
 .alert-info-custom {
     background: #e3f2fd;
-    border-left: 4px solid #2196f3;
-    color: #1976d2;
-    padding: 12px 15px;
-    border-radius: 4px;
-    margin-top: 15px;
-}
-
-.alert-warning-custom {
-    background: #fff3e0;
-    border-left: 4px solid #ff9800;
-    color: #f57c00;
-    padding: 12px 15px;
-    border-radius: 4px;
-    margin-top: 15px;
-}
-</style>
+    border-left: 4px solid #2
