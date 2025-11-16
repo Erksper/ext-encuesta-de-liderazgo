@@ -20,6 +20,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
         
         setup: function () {
+            console.log('Setup evaluacion-general iniciado');
+            
             this.state = {
                 usuario: null,
                 esCasaNacional: false,
@@ -37,7 +39,19 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             this.cargarUsuarioActual();
         },
         
+        data: function () {
+            return {};
+        },
+        
         afterRender: function () {
+            console.log('afterRender ejecutado');
+            console.log('Elementos encontrados:', {
+                container: this.$el.length,
+                claSelect: this.$el.find('#cla-select').length,
+                oficinaSelect: this.$el.find('#oficina-select').length,
+                usuarioSelect: this.$el.find('#usuario-select').length
+            });
+            
             // Dar tiempo para que el DOM se construya
             setTimeout(function() {
                 this.inicializarFiltros();
@@ -64,11 +78,15 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         teams: this.state.usuario.teamsIds
                     });
                     
+                    this.wait(false);
+                    
                 }.bind(this));
             }.bind(this));
         },
         
         inicializarFiltros: function () {
+            console.log('Inicializando filtros...');
+            
             var claSelect = this.$el.find('#cla-select');
             var oficinaSelect = this.$el.find('#oficina-select');
             var usuarioSelect = this.$el.find('#usuario-select');
@@ -244,8 +262,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 setTimeout(function() {
                     this.cargarDatos();
                 }.bind(this), 500);
-            } else {
-                this.wait(false);
             }
         },
         
@@ -270,14 +286,20 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 
                 if (this.state.encuestas.length === 0) {
                     this.mostrarNoData();
-                    return;
+                    return Promise.resolve(null); // Retornar promise para que no falle el siguiente .then
                 }
                 
                 return Promise.all([
                     this.fetchTodasLasPreguntas(),
                     this.fetchRespuestasPorEncuestas(this.state.encuestas.map(e => e.id))
                 ]);
-            }.bind(this)).then(function ([preguntas, respuestas]) {
+            }.bind(this)).then(function (resultado) {
+                // Si no hay resultado (no hay encuestas), salir
+                if (!resultado) return;
+                
+                var preguntas = resultado[0];
+                var respuestas = resultado[1];
+                
                 if (!preguntas) return;
                 
                 this.state.preguntas = preguntas.filter(p => {
@@ -295,7 +317,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             }.bind(this)).catch(function (error) {
                 console.error('Error cargando datos:', error);
                 Espo.Ui.error('Error al cargar los datos');
-                this.wait(false);
+                this.mostrarNoData();
             }.bind(this));
         },
         
@@ -716,14 +738,12 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             this.$el.find('#loading-area').hide();
             this.$el.find('#content-area').show();
             this.$el.find('#no-data-area').hide();
-            this.wait(false);
         },
         
         mostrarNoData: function () {
             this.$el.find('#loading-area').hide();
             this.$el.find('#content-area').hide();
             this.$el.find('#no-data-area').show();
-            this.wait(false);
         }
         
     });

@@ -1,0 +1,23 @@
+[
+    {
+        "route": "Liderazgo",
+        "params": {
+            "controller": "Liderazgo",
+            "action": "index"
+        }
+    },
+    {
+        "route": "Liderazgo/admin",
+        "params": {
+            "controller": "Liderazgo",
+            "action": "admin"
+        }
+    },
+    {
+        "route": "Liderazgo/categoria/:categoria",
+        "params": {
+            "controller": "Liderazgo",
+            "action": "categoria"
+        }
+    }
+]
