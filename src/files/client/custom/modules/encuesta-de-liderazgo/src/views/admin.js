@@ -569,69 +569,18 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
 
         guardarEncuestasYRespuestas: function(encuestasValidas, usuarioDefectoId, mapaPreguntas) {
             return new Promise(function(resolve, reject) {
-                let procesadas = 0;
                 let errores = [];
                 let encuestasGuardadas = 0;
                 
                 if (encuestasValidas.length === 0) {
-                    resolve({ guardadas: 0, errores: [] });
+                    resolve({ guardadas: 0, errores: [], total: 0 });
                     return;
                 }
                 
-                const procesarEncuesta = function(encuesta, index) {
-                    return new Promise(function(resolveEncuesta, rejectEncuesta) {
-                        setTimeout(function() {
-                            this.buscarUsuarioPorNombre(encuesta.liderEvaluado).then(function(usuarioEvaluado) {
-                                if (!usuarioEvaluado || !usuarioEvaluado.id) {
-                                    errores.push('Fila ' + encuesta.numeroFila + ': Usuario "' + encuesta.liderEvaluado + '" no encontrado.');
-                                    resolveEncuesta();
-                                    return;
-                                }
-                                
-                                this.getModelFactory().create('EncuestaLiderazgo', function(model) {
-                                    const datos = {
-                                        name: 'Evaluación ' + encuesta.liderEvaluado + ' - ' + encuesta.fecha,
-                                        fecha: encuesta.fecha,
-                                        usuarioId: usuarioDefectoId,
-                                        usuarioEvaluadoId: usuarioEvaluado.id
-                                    };
-                                    
-                                    if (usuarioEvaluado.claTeamId) datos.claTeamId = usuarioEvaluado.claTeamId;
-                                    if (usuarioEvaluado.oficinaTeamId) datos.oficinaTeamId = usuarioEvaluado.oficinaTeamId;
-                                    
-                                    model.set(datos);
-                                    
-                                    model.save().then(function() {
-                                        const encuestaId = model.id;
-                                        encuestasGuardadas++;
-                                        
-                                        setTimeout(function() {
-                                            this.guardarRespuestasEnLotes(encuestaId, encuesta.respuestas, mapaPreguntas).then(function() {
-                                                resolveEncuesta();
-                                            }).catch(function(error) {
-                                                console.error('Error guardando respuestas:', error);
-                                                errores.push('Fila ' + encuesta.numeroFila + ': Error al guardar respuestas.');
-                                                resolveEncuesta();
-                                            });
-                                        }.bind(this), 100);
-                                        
-                                    }.bind(this)).catch(function(error) {
-                                        console.error('Error guardando encuesta:', error);
-                                        errores.push('Fila ' + encuesta.numeroFila + ': Error al guardar encuesta.');
-                                        resolveEncuesta();
-                                    });
-                                }.bind(this));
-                            }.bind(this)).catch(function(error) {
-                                console.error('Error buscando usuario:', error);
-                                errores.push('Fila ' + encuesta.numeroFila + ': Error buscando usuario.');
-                                resolveEncuesta();
-                            });
-                        }.bind(this), index * 500);
-                    }.bind(this));
-                }.bind(this);
+                let indiceActual = 0;
                 
-                const procesarEnSerie = function(index) {
-                    if (index >= encuestasValidas.length) {
+                const procesarSiguienteEncuesta = function() {
+                    if (indiceActual >= encuestasValidas.length) {
                         resolve({ 
                             guardadas: encuestasGuardadas, 
                             errores: errores,
@@ -640,14 +589,140 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                         return;
                     }
                     
-                    Espo.Ui.notify(`Guardando encuesta ${index + 1} de ${encuestasValidas.length}...`, 'info');
-
-                    procesarEncuesta(encuestasValidas[index], index).then(function() {
-                        procesarEnSerie(index + 1);
-                    });
-                };
+                    const encuesta = encuestasValidas[indiceActual];
+                    const numeroActual = indiceActual + 1;
+                    
+                    Espo.Ui.notify(`Guardando encuesta ${numeroActual} de ${encuestasValidas.length}...`, 'info');
+                    
+                    this.guardarEncuestaCompleta(encuesta, usuarioDefectoId, mapaPreguntas)
+                        .then(() => {
+                            encuestasGuardadas++;
+                            indiceActual++;
+                            // Pequeña pausa antes de la siguiente
+                            setTimeout(() => procesarSiguienteEncuesta(), 50);
+                        })
+                        .catch(error => {
+                            errores.push('Fila ' + encuesta.numeroFila + ': ' + error.message);
+                            indiceActual++;
+                            setTimeout(() => procesarSiguienteEncuesta(), 50);
+                        });
+                    
+                }.bind(this);
                 
-                procesarEnSerie(0);
+                procesarSiguienteEncuesta();
+            }.bind(this));
+        },
+        
+        guardarEncuestaCompleta: function(encuesta, usuarioDefectoId, mapaPreguntas) {
+            return new Promise(function(resolve, reject) {
+                this.buscarUsuarioPorNombre(encuesta.liderEvaluado).then(function(usuarioEvaluado) {
+                    if (!usuarioEvaluado || !usuarioEvaluado.id) {
+                        reject(new Error('Usuario "' + encuesta.liderEvaluado + '" no encontrado'));
+                        return;
+                    }
+                    
+                    this.getModelFactory().create('EncuestaLiderazgo', function(model) {
+                        const datos = {
+                            name: 'Evaluación ' + encuesta.liderEvaluado + ' - ' + encuesta.fecha,
+                            fecha: encuesta.fecha,
+                            usuarioId: usuarioDefectoId,
+                            usuarioEvaluadoId: usuarioEvaluado.id
+                        };
+                        
+                        if (usuarioEvaluado.claTeamId) datos.claTeamId = usuarioEvaluado.claTeamId;
+                        if (usuarioEvaluado.oficinaTeamId) datos.oficinaTeamId = usuarioEvaluado.oficinaTeamId;
+                        
+                        model.set(datos);
+                        
+                        model.save().then(function() {
+                            const encuestaId = model.id;
+                            console.log(`Encuesta ${encuestaId} guardada, guardando ${encuesta.respuestas.length} respuestas...`);
+                            
+                            // Guardar respuestas en lotes pequeños
+                            this.guardarRespuestasEnLotes(encuestaId, encuesta.respuestas, mapaPreguntas)
+                                .then(function() {
+                                    console.log(`Respuestas de encuesta ${encuestaId} guardadas exitosamente`);
+                                    resolve();
+                                })
+                                .catch(reject);
+                                
+                        }.bind(this)).catch(reject);
+                    }.bind(this));
+                }.bind(this)).catch(reject);
+            }.bind(this));
+        },
+        
+        guardarRespuestasEnLotes: function(encuestaId, respuestas, mapaPreguntas) {
+            return new Promise(function(resolve, reject) {
+                if (respuestas.length === 0) {
+                    resolve();
+                    return;
+                }
+                
+                // Procesar respuestas en lotes de 20
+                const LOTE_SIZE = 20;
+                let indiceActual = 0;
+                let respuestasGuardadas = 0;
+                
+                const procesarSiguienteLote = function() {
+                    if (indiceActual >= respuestas.length) {
+                        console.log(`Total respuestas guardadas: ${respuestasGuardadas}/${respuestas.length}`);
+                        resolve();
+                        return;
+                    }
+                    
+                    const loteFin = Math.min(indiceActual + LOTE_SIZE, respuestas.length);
+                    const loteActual = respuestas.slice(indiceActual, loteFin);
+                    
+                    const promesasLote = loteActual.map(respuesta => {
+                        return new Promise(function(resolveRespuesta) {
+                            const key = `${respuesta.categoria.toLowerCase()}::${respuesta.pregunta.toLowerCase()}`;
+                            const preguntaId = mapaPreguntas[key];
+                            
+                            if (!preguntaId) {
+                                resolveRespuesta();
+                                return;
+                            }
+                            
+                            this.getModelFactory().create('EncuestaLiderazgoRespuesta', function(model) {
+                                const datos = {
+                                    encuestaLiderazgoId: encuestaId,
+                                    preguntaId: preguntaId
+                                };
+                                
+                                if (respuesta.tipo === 'seleccion_simple') {
+                                    datos.seleccion = parseInt(respuesta.valor, 10);
+                                } else {
+                                    datos.texto = respuesta.valor;
+                                }
+                                
+                                model.set(datos);
+                                model.save()
+                                    .then(() => {
+                                        respuestasGuardadas++;
+                                        resolveRespuesta();
+                                    })
+                                    .catch((error) => {
+                                        console.error('Error guardando respuesta:', error);
+                                        resolveRespuesta(); // Continuar aunque falle
+                                    });
+                                
+                            }.bind(this));
+                        }.bind(this));
+                    });
+                    
+                    Promise.all(promesasLote).then(() => {
+                        indiceActual = loteFin;
+                        // Pequeña pausa entre lotes de respuestas
+                        setTimeout(() => procesarSiguienteLote(), 100);
+                    }).catch(() => {
+                        indiceActual = loteFin;
+                        setTimeout(() => procesarSiguienteLote(), 100);
+                    });
+                    
+                }.bind(this);
+                
+                procesarSiguienteLote();
             }.bind(this));
         },
         
@@ -732,68 +807,6 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                 }.bind(this));
             }.bind(this));
         },
-
-        guardarRespuestasEnLotes: function(encuestaId, respuestas, mapaPreguntas) {
-            return new Promise(function(resolve, reject) {
-                let procesadas = 0;
-                let errores = [];
-                
-                if (respuestas.length === 0) {
-                    resolve();
-                    return;
-                }
-                
-                const guardarRespuestaIndividual = function(respuesta, index) {
-                    return new Promise(function(resolveIndividual, rejectIndividual) {
-                        const key = `${respuesta.categoria.toLowerCase()}::${respuesta.pregunta.toLowerCase()}`;
-                        const preguntaId = mapaPreguntas[key];
-                        
-                        if (!preguntaId) {
-                            resolveIndividual();
-                            return;
-                        }
-                        
-                        this.getModelFactory().create('EncuestaLiderazgoRespuesta', function(model) {
-                            const datos = {
-                                encuestaLiderazgoId: encuestaId,
-                                preguntaId: preguntaId
-                            };
-                            
-                            if (respuesta.tipo === 'seleccion_simple') {
-                                datos.seleccion = parseInt(respuesta.valor, 10);
-                            } else {
-                                datos.texto = respuesta.valor;
-                            }
-                            
-                            model.set(datos);
-                            
-                            setTimeout(function() {
-                                model.save().then(function() {
-                                    resolveIndividual();
-                                }).catch(function(error) {
-                                    console.error('Error guardando respuesta:', error);
-                                    errores.push(`Error en respuesta ${index + 1}: ${error.message}`);
-                                    resolveIndividual();
-                                });
-                            }, 50 * index);
-                            
-                        }.bind(this));
-                    }.bind(this));
-                }.bind(this);
-                
-                const promesas = [];
-                respuestas.forEach(function(respuesta, index) {
-                    promesas.push(guardarRespuestaIndividual(respuesta, index));
-                });
-                
-                Promise.all(promesas).then(function() {
-                    resolve();
-                }).catch(function(error) {
-                    console.error('Error en guardado de respuestas:', error);
-                    resolve();
-                });
-            }.bind(this));
-        }
         
     });
 });

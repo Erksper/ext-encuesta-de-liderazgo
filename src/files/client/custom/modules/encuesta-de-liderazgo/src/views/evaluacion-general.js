@@ -52,6 +52,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 usuarioSelect: this.$el.find('#usuario-select').length
             });
             
+            // Mostrar "No hay datos" inmediatamente
+            this.mostrarNoData();
+            
             // Dar tiempo para que el DOM se construya
             setTimeout(function() {
                 this.inicializarFiltros();
@@ -258,6 +261,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
         
         cargarDatosIniciales: function () {
+            // Mostrar "No hay datos" al inicio en lugar del loading
+            this.mostrarNoData();
+            
             if (!this.state.esCasaNacional && this.state.oficinaSeleccionada) {
                 setTimeout(function() {
                     this.cargarDatos();
