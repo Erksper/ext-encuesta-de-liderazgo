@@ -20,13 +20,13 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
         
         setup: function () {
-            console.log('Setup evaluacion-general iniciado');
             
             this.esAdmin = this.getUser().isAdmin();
             
             this.state = {
                 usuario: null,
                 esCasaNacional: false,
+                fechaSeleccionada: null, // NUEVO
                 claSeleccionado: null,
                 oficinaSeleccionada: null,
                 usuarioSeleccionado: null,
@@ -123,12 +123,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         
         afterRender: function () {
             console.log('afterRender ejecutado');
-            console.log('Elementos encontrados:', {
-                container: this.$el.length,
-                claSelect: this.$el.find('#cla-select').length,
-                oficinaSelect: this.$el.find('#oficina-select').length,
-                usuarioSelect: this.$el.find('#usuario-select').length
-            });
             
             // Mostrar "No hay datos" inmediatamente
             this.mostrarNoData();
@@ -136,8 +130,56 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             // Dar tiempo para que el DOM se construya
             setTimeout(function() {
                 this.inicializarFiltros();
-                this.cargarDatosIniciales();
+                this.cargarAniosDisponibles(); // NUEVO: Cargar años primero
             }.bind(this), 100);
+        },
+
+        cargarAniosDisponibles: function () {
+            console.log('Cargando años disponibles...');
+            
+            this.fetchAniosDisponibles().then(function(anios) {
+                var fechaSelect = this.$el.find('#fecha-select');
+                fechaSelect.html('<option value="">Todos los años</option>');
+                
+                anios.sort((a, b) => b - a).forEach(function(anio) {
+                    fechaSelect.append(`<option value="${anio}">${anio}</option>`);
+                });
+                
+                console.log('Años cargados:', anios);
+                
+            }.bind(this)).catch(function(error) {
+                console.error('Error cargando años:', error);
+                this.$el.find('#fecha-select').html('<option value="">Error al cargar</option>');
+            }.bind(this));
+        },
+
+        // NUEVA FUNCIÓN: Obtener años disponibles de las encuestas
+        fetchAniosDisponibles: function () {
+            return new Promise(function (resolve, reject) {
+                this.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
+                    collection.maxSize = 1000; // Suficiente para obtener todas las fechas
+                    
+                    collection.fetch().then(function () {
+                        var anios = new Set();
+                        var models = collection.models || [];
+                        
+                        models.forEach(function(model) {
+                            var fecha = model.get('fecha');
+                            if (fecha) {
+                                var anio = new Date(fecha).getFullYear();
+                                anios.add(anio);
+                            }
+                        });
+                        
+                        // Si no hay fechas, usar el año actual
+                        if (anios.size === 0) {
+                            anios.add(new Date().getFullYear());
+                        }
+                        
+                        resolve(Array.from(anios));
+                    }).catch(reject);
+                }.bind(this));
+            }.bind(this));
         },
         
         cargarUsuarioActual: function () {
@@ -186,22 +228,46 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         inicializarFiltros: function () {
             console.log('Inicializando filtros...');
             
+            var fechaSelect = this.$el.find('#fecha-select');
             var claSelect = this.$el.find('#cla-select');
             var oficinaSelect = this.$el.find('#oficina-select');
             var usuarioSelect = this.$el.find('#usuario-select');
             
             console.log('Inicializando filtros, elementos encontrados:', {
+                fecha: fechaSelect.length,
                 cla: claSelect.length,
                 oficina: oficinaSelect.length,
                 usuario: usuarioSelect.length
             });
             
-            if (this.state.esCasaNacional) {
-                this.cargarTodosCLAs();
-            } else {
-                this.cargarCLAsUsuario();
-            }
+            // Evento para el filtro de fecha
+            fechaSelect.on('change', function (e) {
+                this.state.fechaSeleccionada = $(e.currentTarget).val();
+                this.state.claSeleccionado = null;
+                this.state.oficinaSeleccionada = null;
+                this.state.usuarioSeleccionado = null;
+                
+                // Resetear los demás filtros
+                claSelect.prop('disabled', !this.state.fechaSeleccionada);
+                oficinaSelect.prop('disabled', true);
+                usuarioSelect.prop('disabled', true);
+                
+                if (this.state.fechaSeleccionada) {
+                    // Cargar CLAs basados en la fecha seleccionada
+                    if (this.state.esCasaNacional) {
+                        this.cargarTodosCLAs();
+                    } else {
+                        this.cargarCLAsUsuario();
+                    }
+                    this.cargarDatos();
+                } else {
+                    claSelect.html('<option value="">Seleccione un año primero</option>');
+                    oficinaSelect.html('<option value="">Seleccione un CLA primero</option>');
+                    usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
+                }
+            }.bind(this));
             
+            // Los eventos existentes para cla, oficina y usuario se mantienen igual
             claSelect.on('change', function (e) {
                 this.state.claSeleccionado = $(e.currentTarget).val();
                 this.state.oficinaSeleccionada = null;
@@ -391,7 +457,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
         
         cargarDatosIniciales: function () {
-            if (!this.state.esCasaNacional && this.state.oficinaSeleccionada) {
+            if (this.state.fechaSeleccionada && !this.state.esCasaNacional && this.state.oficinaSeleccionada) {
                 setTimeout(function() {
                     this.cargarDatos();
                 }.bind(this), 500);
@@ -644,6 +710,19 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 var allEncuestas = [];
                 
                 var whereConditions = [];
+                
+                // NUEVO: Filtro por fecha/año
+                if (this.state.fechaSeleccionada) {
+                    var año = parseInt(this.state.fechaSeleccionada);
+                    var fechaInicio = año + '-01-01';
+                    var fechaFin = año + '-12-31';
+                    
+                    whereConditions.push({
+                        type: 'between',
+                        attribute: 'fecha',
+                        value: [fechaInicio, fechaFin]
+                    });
+                }
                 
                 if (this.state.claSeleccionado && this.state.claSeleccionado !== 'CLA0') {
                     whereConditions.push({

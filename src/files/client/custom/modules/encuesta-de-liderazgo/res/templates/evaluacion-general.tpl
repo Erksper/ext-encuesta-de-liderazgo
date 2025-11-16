@@ -11,10 +11,17 @@
 
     <div class="reporte-filters">
         <div class="filter-row">
+            <!-- NUEVO FILTRO DE FECHA -->
+            <div class="filter-group">
+                <label for="fecha-select">📅 Año</label>
+                <select id="fecha-select" class="form-control">
+                    <option value="">Cargando...</option>
+                </select>
+            </div>
             <div class="filter-group">
                 <label for="cla-select">🏢 CLA</label>
-                <select id="cla-select" class="form-control">
-                    <option value="">Cargando...</option>
+                <select id="cla-select" class="form-control" disabled>
+                    <option value="">Seleccione un año primero</option>
                 </select>
             </div>
             <div class="filter-group">
@@ -129,8 +136,26 @@
 
 .filter-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+@media (min-width: 1200px) {
+    .filter-row {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 1199px) and (min-width: 768px) {
+    .filter-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 767px) {
+    .filter-row {
+        grid-template-columns: 1fr;
+    }
 }
 
 .filter-group {
@@ -184,15 +209,18 @@
 .charts-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
+    gap: 25px; 
+    margin-bottom: 40px; 
+    row-gap: 35px; 
 }
 
 .chart-card {
     background: white;
     border-radius: 8px;
-    padding: 15px;
+    padding: 20px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     transition: transform 0.3s, box-shadow 0.3s;
+    min-height: 350px; 
 }
 
 .chart-card:hover {
