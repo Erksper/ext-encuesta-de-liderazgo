@@ -26,11 +26,12 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             this.state = {
                 usuario: null,
                 esCasaNacional: false,
-                fechaSeleccionada: null, // NUEVO
+                fechaSeleccionada: null,
                 claSeleccionado: null,
                 oficinaSeleccionada: null,
                 usuarioSeleccionado: null,
                 charts: {},
+                promediosChart: null,
                 categorias: [],
                 encuestas: [],
                 respuestas: [],
@@ -130,7 +131,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             // Dar tiempo para que el DOM se construya
             setTimeout(function() {
                 this.inicializarFiltros();
-                this.cargarAniosDisponibles(); // NUEVO: Cargar años primero
+                this.cargarAniosDisponibles();
             }.bind(this), 100);
         },
 
@@ -466,6 +467,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         
         cargarDatos: function () {
             console.log('Cargando datos con filtros:', {
+                fecha: this.state.fechaSeleccionada,
                 cla: this.state.claSeleccionado,
                 oficina: this.state.oficinaSeleccionada,
                 usuario: this.state.usuarioSeleccionado
@@ -994,6 +996,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 
                 var canvasId = 'chart-' + categoria.id;
                 var categoriaNombre = categoria.name;
+                
+                // USAR DATA ATTRIBUTES PARA EVENT DELEGATION
                 var cardHtml = `
                     <div class="chart-card" data-categoria-nombre="${this.escapeHtml(categoriaNombre)}" style="cursor: pointer;">
                         <h3>${categoriaNombre}</h3>
@@ -1004,11 +1008,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 `;
                 
                 chartsContainer.append(cardHtml);
-                
-                // Agregar evento click a la card
-                this.$el.find(`[data-categoria-nombre="${this.escapeHtml(categoriaNombre)}"]`).on('click', function() {
-                    this.navegarACategoriaDetalle(categoriaNombre);
-                }.bind(this));
                 
                 setTimeout(function () {
                     var ctx = document.getElementById(canvasId);
@@ -1045,17 +1044,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                             return label + ': ' + value + ' (' + percentage + '%)';
                                         }
                                     }
-                                },
-                                datalabels: {
-                                    formatter: function(value, context) {
-                                        var percentage = ((value / total) * 100).toFixed(1);
-                                        return percentage + '%';
-                                    },
-                                    color: '#fff',
-                                    font: {
-                                        weight: 'bold',
-                                        size: 14
-                                    }
                                 }
                             }
                         }
@@ -1063,6 +1051,35 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 }.bind(this), 100);
                 
             }.bind(this));
+
+            // AGREGAR EVENT DELEGATION PARA LOS CLICKS
+            this.$el.off('click', '.chart-card').on('click', '.chart-card', function(e) {
+                var $card = $(e.currentTarget);
+                var categoriaNombre = $card.data('categoria-nombre');
+                
+                if (categoriaNombre) {
+                    this.navegarACategoriaDetalle(categoriaNombre);
+                }
+            }.bind(this));
+        },
+        
+        navegarACategoriaDetalle: function(categoriaNombre) {
+            console.log('Navegando a categoría:', categoriaNombre);
+            
+            // Crear parámetros compuestos
+            var filtrosParam = [
+                this.state.fechaSeleccionada || 'null',
+                this.state.claSeleccionado || 'null',
+                this.state.oficinaSeleccionada || 'null', 
+                this.state.usuarioSeleccionado || 'null'
+            ].join('-');
+            
+            var categoriaEncoded = encodeURIComponent(categoriaNombre);
+            
+            console.log('Parámetros enviados:', filtrosParam);
+            
+            // Usar el router con parámetros compuestos
+            this.getRouter().navigate('#Liderazgo/categoria/' + categoriaEncoded + '/' + filtrosParam, {trigger: true});
         },
         
         mostrarLoading: function (show) {
@@ -1234,11 +1251,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 "'": '&#039;'
             };
             return text.replace(/[&<>"']/g, m => map[m]);
-        },
-        
-        navegarACategoriaDetalle: function(categoriaNombre) {
-            var categoriaEncoded = encodeURIComponent(categoriaNombre);
-            this.getRouter().navigate('#Liderazgo/categoria/' + categoriaEncoded, {trigger: true});
         }
         
     });

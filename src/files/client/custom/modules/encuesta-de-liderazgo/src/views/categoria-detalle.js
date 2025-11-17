@@ -6,14 +6,14 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         
         COLORES: {
             '4': '#A0A57E',
-            '3': '#6B6F47',
+            '3': '#6B6F47', 
             '2': '#D3D3D3',
             '1': '#333333'
         },
         
         LABELS: {
             '4': 'Siempre',
-            '3': 'Casi Siempre',
+            '3': 'Casi Siempre', 
             '2': 'Pocas Veces',
             '1': 'Nunca'
         },
@@ -22,16 +22,13 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             console.log('Setup categoria-detalle, options:', this.options);
             
             this.categoriaNombre = this.options.categoriaNombre || 'Categoría';
-            this.categoriaId = this.options.categoriaId || null;
             
-            console.log('Categoría nombre:', this.categoriaNombre);
+            // Parsear parámetros compuestos desde la URL
+            this.filtros = this.parseFiltrosFromUrl();
+            console.log('Filtros parseados:', this.filtros);
             
             this.state = {
-                usuario: null,
-                esCasaNacional: false,
-                claSeleccionado: null,
-                oficinaSeleccionada: null,
-                usuarioSeleccionado: null,
+                filtros: this.filtros,
                 gaugeChart: null,
                 encuestas: [],
                 respuestas: [],
@@ -39,240 +36,106 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             };
             
             this.wait(true);
-            this.cargarUsuarioActual();
+            this.cargarDatos();
+        },
+        
+        // NUEVO MÉTODO: Parsear parámetros compuestos
+        parseFiltrosFromUrl: function() {
+            var filtros = {
+                anio: null,
+                cla: null, 
+                oficina: null,
+                usuario: null
+            };
+            
+            // Intentar obtener de options primero
+            if (this.options.filtros) {
+                var partes = this.options.filtros.split('-');
+                if (partes.length >= 4) {
+                    filtros.anio = partes[0] !== 'null' ? partes[0] : null;
+                    filtros.cla = partes[1] !== 'null' ? partes[1] : null;
+                    filtros.oficina = partes[2] !== 'null' ? partes[2] : null;
+                    filtros.usuario = partes[3] !== 'null' ? partes[3] : null;
+                }
+            }
+            
+            return filtros;
         },
         
         data: function () {
             return {
-                categoriaNombre: this.categoriaNombre
+                categoriaNombre: this.categoriaNombre,
+                // Ocultar filtros ya que vienen por parámetros
+                mostrarFiltros: false
             };
         },
         
         afterRender: function () {
-            this.inicializarFiltros();
-            this.cargarDatosIniciales();
-        },
-        
-        cargarUsuarioActual: function () {
-            var user = this.getUser();
-            this.state.usuario = user;
+            console.log('afterRender categoria-detalle ejecutado');
             
-            this.getModelFactory().create('User', function (userModel) {
-                userModel.id = user.id;
-                userModel.fetch({ relations: { roles: true, teams: true } }).then(function() {
-                    var roles = Object.values(userModel.get('rolesNames') || {}).map(r => r.toLowerCase());
-                    this.state.esCasaNacional = roles.includes('casa nacional');
-                    
-                    this.state.usuario.teamsIds = userModel.get('teamsIds') || [];
-                    this.state.usuario.teamsNames = userModel.get('teamsNames') || {};
-                    
-                }.bind(this));
-            }.bind(this));
-        },
-        
-        inicializarFiltros: function () {
-            var claSelect = this.$el.find('#cla-select');
-            var oficinaSelect = this.$el.find('#oficina-select');
-            var usuarioSelect = this.$el.find('#usuario-select');
-            
-            if (this.state.esCasaNacional) {
-                this.cargarTodosCLAs();
+            // Verificar si Chart.js está cargado
+            if (typeof Chart === 'undefined') {
+                console.log('Cargando Chart.js para categoria-detalle...');
+                this.cargarChartJS();
             } else {
-                this.cargarCLAsUsuario();
-            }
-            
-            claSelect.on('change', function (e) {
-                this.state.claSeleccionado = $(e.currentTarget).val();
-                this.state.oficinaSeleccionada = null;
-                this.state.usuarioSeleccionado = null;
-                
-                oficinaSelect.html('<option value="">Cargando...</option>');
-                usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
-                usuarioSelect.prop('disabled', true);
-                
-                if (this.state.claSeleccionado === 'CLA0') {
-                    oficinaSelect.html('<option value="">No disponible para Territorio Nacional</option>');
-                    oficinaSelect.prop('disabled', true);
-                    this.cargarDatos();
-                } else if (this.state.claSeleccionado) {
-                    this.cargarOficinasPorCLA(this.state.claSeleccionado);
-                    this.cargarDatos();
-                } else {
-                    oficinaSelect.prop('disabled', true);
-                    oficinaSelect.html('<option value="">Seleccione un CLA primero</option>');
-                }
-            }.bind(this));
-            
-            oficinaSelect.on('change', function (e) {
-                this.state.oficinaSeleccionada = $(e.currentTarget).val();
-                this.state.usuarioSeleccionado = null;
-                
-                if (this.state.oficinaSeleccionada) {
-                    this.cargarUsuariosPorOficina(this.state.oficinaSeleccionada);
-                    this.cargarDatos();
-                } else {
-                    usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
-                    usuarioSelect.prop('disabled', true);
-                }
-            }.bind(this));
-            
-            usuarioSelect.on('change', function (e) {
-                this.state.usuarioSeleccionado = $(e.currentTarget).val();
-                this.cargarDatos();
-            }.bind(this));
-        },
-        
-        cargarTodosCLAs: function () {
-            this.fetchAllTeams().then(function (teams) {
-                var claPattern = /^CLA\d+$/i;
-                var clas = teams.filter(t => claPattern.test(t.id));
-                
-                var claSelect = this.$el.find('#cla-select');
-                claSelect.html('<option value="">Seleccione un CLA</option>');
-                claSelect.append('<option value="CLA0">Territorio Nacional</option>');
-                
-                clas.sort((a, b) => {
-                    var numA = parseInt(a.id.replace(/\D/g, ''));
-                    var numB = parseInt(b.id.replace(/\D/g, ''));
-                    return numA - numB;
-                }).forEach(cla => {
-                    claSelect.append(`<option value="${cla.id}">${cla.name || cla.id}</option>`);
-                });
-            }.bind(this));
-        },
-        
-        cargarCLAsUsuario: function () {
-            var claSelect = this.$el.find('#cla-select');
-            var oficinaSelect = this.$el.find('#oficina-select');
-            
-            if (!this.state.usuario || !this.state.usuario.teamsIds) {
-                claSelect.html('<option value="">Sin equipos asignados</option>');
-                return;
-            }
-            
-            var teamsIds = this.state.usuario.teamsIds;
-            var claPattern = /^CLA\d+$/i;
-            var claId = teamsIds.find(id => claPattern.test(id));
-            
-            claSelect.html('<option value="">Seleccione un CLA</option>');
-            claSelect.append('<option value="CLA0">Territorio Nacional</option>');
-            
-            if (claId) {
-                var teamName = this.state.usuario.teamsNames[claId] || claId;
-                claSelect.append(`<option value="${claId}">${teamName}</option>`);
-                
-                this.state.claSeleccionado = claId;
-                claSelect.val(claId);
-                
-                var oficinaId = teamsIds.find(id => !claPattern.test(id) && id.toLowerCase() !== 'venezuela');
-                if (oficinaId) {
-                    var oficinaName = this.state.usuario.teamsNames[oficinaId] || oficinaId;
-                    oficinaSelect.html(`<option value="${oficinaId}">${oficinaName}</option>`);
-                    oficinaSelect.prop('disabled', false);
-                    this.state.oficinaSeleccionada = oficinaId;
-                    oficinaSelect.val(oficinaId);
-                    
-                    this.cargarUsuariosPorOficina(oficinaId);
-                }
+                this.generarGauge();
+                this.generarTablaPreguntas();
             }
         },
-        
-        cargarOficinasPorCLA: function (claId) {
-            var oficinaSelect = this.$el.find('#oficina-select');
-            
-            Promise.all([
-                this.fetchAllTeams(),
-                this.fetchUsuariosPorCLA(claId)
-            ]).then(function ([teams, usuariosConCLA]) {
-                var claPattern = /^CLA\d+$/i;
-                var oficinasIds = new Set();
-                
-                usuariosConCLA.forEach(usuario => {
-                    var teamsIds = usuario.teamsIds || [];
-                    teamsIds.forEach(teamId => {
-                        if (!claPattern.test(teamId) && teamId.toLowerCase() !== 'venezuela') {
-                            oficinasIds.add(teamId);
-                        }
-                    });
-                });
-                
-                var oficinas = teams.filter(t => oficinasIds.has(t.id));
-                
-                oficinaSelect.html('<option value="">Todas las oficinas</option>');
-                oficinas.forEach(oficina => {
-                    oficinaSelect.append(`<option value="${oficina.id}">${oficina.name || oficina.id}</option>`);
-                });
-                
-                oficinaSelect.prop('disabled', false);
-            }.bind(this)).catch(function (error) {
-                console.error('Error cargando oficinas:', error);
-                oficinaSelect.html('<option value="">Error al cargar</option>');
-            });
-        },
-        
-        cargarUsuariosPorOficina: function (oficinaId) {
-            var usuarioSelect = this.$el.find('#usuario-select');
-            
-            this.fetchEncuestasPorOficina(oficinaId).then(function (encuestas) {
-                var usuariosIds = new Set();
-                encuestas.forEach(enc => {
-                    if (enc.usuarioEvaluadoId) {
-                        usuariosIds.add(enc.usuarioEvaluadoId);
-                    }
-                });
-                
-                return this.fetchUsuariosPorIds(Array.from(usuariosIds));
-            }.bind(this)).then(function (usuarios) {
-                usuarioSelect.html('<option value="">Todos los usuarios</option>');
-                usuarios.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(usuario => {
-                    usuarioSelect.append(`<option value="${usuario.id}">${usuario.name}</option>`);
-                });
-                
-                usuarioSelect.prop('disabled', false);
-            }.bind(this)).catch(function (error) {
-                console.error('Error cargando usuarios:', error);
-                usuarioSelect.html('<option value="">Error al cargar</option>');
-            });
-        },
-        
-        cargarDatosIniciales: function () {
-            if (!this.state.esCasaNacional && this.state.oficinaSeleccionada) {
-                setTimeout(function() {
-                    this.cargarDatos();
-                }.bind(this), 500);
-            } else {
+
+        cargarChartJS: function () {
+            var script = document.createElement('script');
+            script.src = 'client/custom/modules/encuesta-de-liderazgo/lib/chart.min.js';
+            script.onload = function() {
+                console.log('Chart.js cargado para categoria-detalle');
+                this.generarGauge();
+                this.generarTablaPreguntas();
+            }.bind(this);
+            script.onerror = function() {
+                console.error('Error al cargar Chart.js');
                 this.wait(false);
-            }
+            }.bind(this);
+            document.head.appendChild(script);
         },
         
         cargarDatos: function () {
+            console.log('Cargando datos para categoría:', this.categoriaNombre, 'con filtros:', this.filtros);
             this.mostrarLoading(true);
             
             // Primero encontrar la categoría por nombre
             this.fetchCategorias().then(function (categorias) {
                 var categoria = categorias.find(c => 
-                    c.name.toLowerCase() === this.categoriaNombre.toLowerCase()
+                    c.name && c.name.toLowerCase() === this.categoriaNombre.toLowerCase()
                 );
                 
                 if (!categoria) {
+                    console.error('Categoría no encontrada:', this.categoriaNombre);
                     Espo.Ui.error('Categoría no encontrada: ' + this.categoriaNombre);
                     this.mostrarNoData();
                     return;
                 }
                 
                 this.categoriaId = categoria.id;
+                console.log('ID de categoría encontrado:', this.categoriaId);
                 
                 return Promise.all([
                     this.fetchEncuestasFiltradas(),
-                    this.fetchPreguntasPorCategoria(categoria.id)
+                    this.fetchPreguntasPorCategoria(this.categoriaId)
                 ]);
-            }.bind(this)).then(function ([encuestas, preguntas]) {
-                if (!encuestas || !preguntas) return;
+            }.bind(this)).then(function (resultados) {
+                if (!resultados) return;
                 
-                this.state.encuestas = encuestas;
-                this.state.preguntas = preguntas;
+                var encuestas = resultados[0];
+                var preguntas = resultados[1];
+                
+                this.state.encuestas = encuestas || [];
+                this.state.preguntas = preguntas || [];
+                
+                console.log('Encuestas cargadas:', this.state.encuestas.length);
+                console.log('Preguntas cargadas:', this.state.preguntas.length);
                 
                 if (this.state.encuestas.length === 0 || this.state.preguntas.length === 0) {
+                    console.log('No hay datos suficientes');
                     this.mostrarNoData();
                     return;
                 }
@@ -287,200 +150,59 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     preguntasIds.includes(r.preguntaId) && r.seleccion
                 );
                 
+                console.log('Respuestas filtradas:', this.state.respuestas.length);
+                
                 if (this.state.respuestas.length === 0) {
                     this.mostrarNoData();
                     return;
                 }
                 
-                this.generarGauge();
-                this.generarTablaPreguntas();
                 this.mostrarContenido();
+                
             }.bind(this)).catch(function (error) {
                 console.error('Error cargando datos:', error);
-                Espo.Ui.error('Error al cargar los datos');
-                this.wait(false);
+                Espo.Ui.error('Error al cargar los datos de la categoría');
+                this.mostrarNoData();
             }.bind(this));
         },
         
-        fetchAllTeams: function () {
-            return new Promise(function (resolve, reject) {
-                var maxSize = 200;
-                var allTeams = [];
-                
-                var fetchPage = function (offset) {
-                    this.getCollectionFactory().create('Team', function (collection) {
-                        collection.maxSize = maxSize;
-                        collection.offset = offset;
-                        
-                        collection.fetch().then(function () {
-                            var models = collection.models || [];
-                            allTeams = allTeams.concat(models.map(m => ({
-                                id: m.id,
-                                name: m.get('name')
-                            })));
-                            
-                            if (models.length === maxSize && allTeams.length < collection.total) {
-                                fetchPage(offset + maxSize);
-                            } else {
-                                resolve(allTeams);
-                            }
-                        }).catch(reject);
-                    }.bind(this));
-                }.bind(this);
-                
-                fetchPage(0);
-            }.bind(this));
-        },
-        
-        fetchUsuariosPorCLA: function (claId) {
-            return new Promise(function (resolve, reject) {
-                var maxSize = 200;
-                var allUsers = [];
-                
-                var fetchPage = function (offset) {
-                    this.getCollectionFactory().create('User', function (collection) {
-                        collection.maxSize = maxSize;
-                        collection.offset = offset;
-                        collection.data = { select: 'teamsIds,teamsNames' };
-                        
-                        collection.fetch().then(function () {
-                            var models = collection.models || [];
-                            var filtered = models.filter(u => {
-                                var teamsIds = u.get('teamsIds') || [];
-                                return teamsIds.includes(claId);
-                            }).map(m => ({
-                                id: m.id,
-                                teamsIds: m.get('teamsIds'),
-                                teamsNames: m.get('teamsNames')
-                            }));
-                            
-                            allUsers = allUsers.concat(filtered);
-                            
-                            if (models.length === maxSize && (offset + maxSize) < collection.total) {
-                                fetchPage(offset + maxSize);
-                            } else {
-                                resolve(allUsers);
-                            }
-                        }).catch(reject);
-                    }.bind(this));
-                }.bind(this);
-                
-                fetchPage(0);
-            }.bind(this));
-        },
-        
-        fetchEncuestasPorOficina: function (oficinaId) {
-            return new Promise(function (resolve, reject) {
-                var maxSize = 200;
-                var allEncuestas = [];
-                
-                var fetchPage = function (offset) {
-                    this.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
-                        collection.maxSize = maxSize;
-                        collection.offset = offset;
-                        collection.where = [
-                            { type: 'equals', attribute: 'oficinaTeamId', value: oficinaId }
-                        ];
-                        
-                        collection.fetch().then(function () {
-                            var models = collection.models || [];
-                            allEncuestas = allEncuestas.concat(models.map(m => ({
-                                id: m.id,
-                                usuarioEvaluadoId: m.get('usuarioEvaluadoId')
-                            })));
-                            
-                            if (models.length === maxSize && allEncuestas.length < collection.total) {
-                                fetchPage(offset + maxSize);
-                            } else {
-                                resolve(allEncuestas);
-                            }
-                        }).catch(reject);
-                    }.bind(this));
-                }.bind(this);
-                
-                fetchPage(0);
-            }.bind(this));
-        },
-        
-        fetchUsuariosPorIds: function (userIds) {
-            return Promise.all(userIds.map(id => {
-                return new Promise(function (resolve) {
-                    this.getModelFactory().create('User', function (model) {
-                        model.id = id;
-                        model.fetch().then(function () {
-                            resolve({
-                                id: model.id,
-                                name: model.get('name')
-                            });
-                        }).catch(function () {
-                            resolve(null);
-                        });
-                    }.bind(this));
-                }.bind(this));
-            })).then(usuarios => usuarios.filter(u => u !== null));
-        },
+        // MÉTODOS FETCH (solo los necesarios, eliminamos los de teams)
         
         fetchCategorias: function () {
             return new Promise(function (resolve, reject) {
-                var maxSize = 200;
-                var allCategorias = [];
-                
-                var fetchPage = function (offset) {
-                    this.getCollectionFactory().create('EncuestaLiderazgoCategoria', function (collection) {
-                        collection.maxSize = maxSize;
-                        collection.offset = offset;
-                        
-                        collection.fetch().then(function () {
-                            var models = collection.models || [];
-                            allCategorias = allCategorias.concat(models.map(m => ({
-                                id: m.id,
-                                name: m.get('name')
-                            })));
-                            
-                            if (models.length === maxSize && allCategorias.length < collection.total) {
-                                fetchPage(offset + maxSize);
-                            } else {
-                                resolve(allCategorias);
-                            }
-                        }).catch(reject);
-                    }.bind(this));
-                }.bind(this);
-                
-                fetchPage(0);
+                this.getCollectionFactory().create('EncuestaLiderazgoCategoria', function (collection) {
+                    collection.maxSize = 200;
+                    
+                    collection.fetch().then(function () {
+                        var models = collection.models || [];
+                        var categorias = models.map(m => ({
+                            id: m.id,
+                            name: m.get('name')
+                        }));
+                        resolve(categorias);
+                    }).catch(reject);
+                }.bind(this));
             }.bind(this));
         },
         
         fetchPreguntasPorCategoria: function (categoriaId) {
             return new Promise(function (resolve, reject) {
-                var maxSize = 200;
-                var allPreguntas = [];
-                
-                var fetchPage = function (offset) {
-                    this.getCollectionFactory().create('EncuestaLiderazgoPregunta', function (collection) {
-                        collection.maxSize = maxSize;
-                        collection.offset = offset;
-                        collection.where = [
-                            { type: 'equals', attribute: 'categoriaLiderazgoId', value: categoriaId }
-                        ];
-                        
-                        collection.fetch().then(function () {
-                            var models = collection.models || [];
-                            allPreguntas = allPreguntas.concat(models.map(m => ({
-                                id: m.id,
-                                pregunta: m.get('pregunta'),
-                                orden: m.get('orden') || 0
-                            })));
-                            
-                            if (models.length === maxSize && allPreguntas.length < collection.total) {
-                                fetchPage(offset + maxSize);
-                            } else {
-                                resolve(allPreguntas);
-                            }
-                        }).catch(reject);
-                    }.bind(this));
-                }.bind(this);
-                
-                fetchPage(0);
+                this.getCollectionFactory().create('EncuestaLiderazgoPregunta', function (collection) {
+                    collection.maxSize = 200;
+                    collection.where = [
+                        { type: 'equals', attribute: 'categoriaLiderazgoId', value: categoriaId }
+                    ];
+                    
+                    collection.fetch().then(function () {
+                        var models = collection.models || [];
+                        var preguntas = models.map(m => ({
+                            id: m.id,
+                            pregunta: m.get('pregunta'),
+                            orden: m.get('orden') || 0
+                        }));
+                        resolve(preguntas);
+                    }).catch(reject);
+                }.bind(this));
             }.bind(this));
         },
         
@@ -491,29 +213,47 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                 
                 var whereConditions = [];
                 
-                if (this.state.claSeleccionado && this.state.claSeleccionado !== 'CLA0') {
+                // Filtro por año
+                if (this.filtros.anio) {
+                    var año = parseInt(this.filtros.anio);
+                    var fechaInicio = año + '-01-01';
+                    var fechaFin = año + '-12-31';
+                    
+                    whereConditions.push({
+                        type: 'between',
+                        attribute: 'fecha', 
+                        value: [fechaInicio, fechaFin]
+                    });
+                }
+                
+                // Filtro por CLA
+                if (this.filtros.cla && this.filtros.cla !== 'CLA0') {
                     whereConditions.push({
                         type: 'equals',
                         attribute: 'claTeamId',
-                        value: this.state.claSeleccionado
+                        value: this.filtros.cla
                     });
                 }
                 
-                if (this.state.oficinaSeleccionada) {
+                // Filtro por oficina
+                if (this.filtros.oficina) {
                     whereConditions.push({
                         type: 'equals',
-                        attribute: 'oficinaTeamId',
-                        value: this.state.oficinaSeleccionada
+                        attribute: 'oficinaTeamId', 
+                        value: this.filtros.oficina
                     });
                 }
                 
-                if (this.state.usuarioSeleccionado) {
+                // Filtro por usuario
+                if (this.filtros.usuario) {
                     whereConditions.push({
                         type: 'equals',
                         attribute: 'usuarioEvaluadoId',
-                        value: this.state.usuarioSeleccionado
+                        value: this.filtros.usuario
                     });
                 }
+                
+                console.log('Where conditions para encuestas:', whereConditions);
                 
                 var fetchPage = function (offset) {
                     this.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
@@ -544,6 +284,11 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         
         fetchRespuestasPorEncuestas: function (encuestaIds) {
             return new Promise(function (resolve, reject) {
+                if (encuestaIds.length === 0) {
+                    resolve([]);
+                    return;
+                }
+                
                 var maxSize = 200;
                 var allRespuestas = [];
                 
@@ -590,6 +335,14 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         },
         
         generarGauge: function () {
+            console.log('Generando gauge para categoría');
+            
+            var ctx = document.getElementById('gauge-general');
+            if (!ctx) {
+                console.error('No se encontró el canvas para el gauge');
+                return;
+            }
+            
             var sumaTotal = 0;
             var conteoTotal = 0;
             
@@ -604,14 +357,19 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             var promedio = conteoTotal > 0 ? (sumaTotal / conteoTotal) : 0;
             var porcentaje = (promedio / 4) * 100;
             
+            console.log('Estadísticas gauge:', { promedio, porcentaje, totalRespuestas: conteoTotal });
+            
             this.$el.find('#total-respuestas').text(conteoTotal);
             this.$el.find('#promedio-general').text(promedio.toFixed(2));
             
-            var ctx = document.getElementById('gauge-general');
-            if (!ctx) return;
-            
             if (this.state.gaugeChart) {
                 this.state.gaugeChart.destroy();
+            }
+            
+            // Asegurarse de que Chart esté disponible
+            if (typeof Chart === 'undefined') {
+                console.error('Chart.js no está disponible');
+                return;
             }
             
             this.state.gaugeChart = new Chart(ctx.getContext('2d'), {
@@ -633,27 +391,10 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                         legend: { display: false },
                         tooltip: { enabled: false }
                     }
-                },
-                plugins: [{
-                    afterDraw: function(chart) {
-                        var ctx = chart.ctx;
-                        var width = chart.width;
-                        var height = chart.height;
-                        
-                        ctx.restore();
-                        ctx.font = 'bold 32px sans-serif';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillStyle = '#333';
-                        
-                        var text = promedio.toFixed(1);
-                        var textX = Math.round((width - ctx.measureText(text).width) / 2);
-                        var textY = height / 1.5;
-                        
-                        ctx.fillText(text, textX, textY);
-                        ctx.save();
-                    }
-                }]
+                }
             });
+            
+            console.log('Gauge generado exitosamente');
         },
         
         obtenerColorPorPromedio: function (promedio) {
@@ -707,6 +448,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         },
         
         escapeHtml: function (text) {
+            if (!text) return '';
             var map = {
                 '&': '&amp;',
                 '<': '&lt;',
@@ -722,10 +464,13 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                 this.$el.find('#loading-area').show();
                 this.$el.find('#content-area').hide();
                 this.$el.find('#no-data-area').hide();
+            } else {
+                this.$el.find('#loading-area').hide();
             }
         },
         
         mostrarContenido: function () {
+            console.log('Mostrando contenido de categoria-detalle');
             this.$el.find('#loading-area').hide();
             this.$el.find('#content-area').show();
             this.$el.find('#no-data-area').hide();
@@ -733,6 +478,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         },
         
         mostrarNoData: function () {
+            console.log('Mostrando "no data" en categoria-detalle');
             this.$el.find('#loading-area').hide();
             this.$el.find('#content-area').hide();
             this.$el.find('#no-data-area').show();

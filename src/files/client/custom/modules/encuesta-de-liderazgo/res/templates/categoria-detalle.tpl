@@ -9,29 +9,6 @@
         <p>Análisis detallado por pregunta</p>
     </div>
 
-    <div class="reporte-filters">
-        <div class="filter-row">
-            <div class="filter-group">
-                <label for="cla-select">🏢 CLA</label>
-                <select id="cla-select" class="form-control">
-                    <option value="">Cargando...</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label for="oficina-select">🏪 Oficina</label>
-                <select id="oficina-select" class="form-control" disabled>
-                    <option value="">Seleccione un CLA primero</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label for="usuario-select">👤 Usuario</label>
-                <select id="usuario-select" class="form-control" disabled>
-                    <option value="">Seleccione una Oficina primero</option>
-                </select>
-            </div>
-        </div>
-    </div>
-
     <div class="reporte-content">
         <div id="loading-area" class="text-center" style="padding: 40px;">
             <span class="fas fa-spinner fa-spin" style="font-size: 40px; color: #B8A279;"></span>

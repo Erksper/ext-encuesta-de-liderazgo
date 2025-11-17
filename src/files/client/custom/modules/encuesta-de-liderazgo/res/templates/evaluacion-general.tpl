@@ -228,6 +228,18 @@
     box-shadow: 0 4px 15px rgba(0,0,0,0.12);
 }
 
+/* Estilos para el link dentro de la card */
+.chart-card-link {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+}
+
+.chart-card-link:hover {
+    text-decoration: none;
+    color: inherit;
+}
+
 .chart-card h3 {
     color: #333;
     margin: 0 0 15px 0;
@@ -312,4 +324,9 @@
 
 .alert-info-custom {
     background: #e3f2fd;
-    border-left: 4px solid #2
+    border-left: 4px solid #2196F3;
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 4px;
+}
+</style>
