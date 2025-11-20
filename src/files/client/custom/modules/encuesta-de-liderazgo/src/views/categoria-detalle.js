@@ -19,28 +19,39 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         },
         
         setup: function () {
-            console.log('Setup categoria-detalle, options:', this.options);
+            console.log('🎯🎯🎯 CATEGORIA-DETALLE SETUP INICIADO 🎯🎯🎯');
+            console.log('Options recibidas:', this.options);
             
             this.categoriaNombre = this.options.categoriaNombre || 'Categoría';
+            console.log('Nombre de categoría:', this.categoriaNombre);
             
-            // Parsear parámetros compuestos desde la URL
-            this.filtros = this.parseFiltrosFromUrl();
+            // Parsear filtros desde las opciones (ahora vienen sin la categoría)
+            this.filtros = this.parseFiltros(this.options.filtros || '');
             console.log('Filtros parseados:', this.filtros);
+            
+            // Textos específicos por categoría
+            this.textosCategorias = {
+                'Comunicación': 'La comunicación efectiva es fundamental para el liderazgo. Este análisis muestra cómo se percibe la comunicación en el equipo.',
+                'Toma de Decisiones': 'La capacidad de tomar decisiones acertadas es clave para el éxito del liderazgo. Revise los resultados obtenidos.',
+                'Trabajo en Equipo': 'El trabajo colaborativo fortalece los resultados del equipo. Analice los indicadores de colaboración.',
+                'Planificación': 'Una buena planificación es esencial para alcanzar los objetivos. Evalúe los resultados de esta categoría.'
+                // Agregar más categorías y textos según sea necesario
+            };
             
             this.state = {
                 filtros: this.filtros,
+                categoriaId: null,
                 gaugeChart: null,
                 encuestas: [],
                 respuestas: [],
-                preguntas: []
+                preguntas: [],
+                datosCargados: false
             };
-            
-            this.wait(true);
-            this.cargarDatos();
         },
-        
-        // NUEVO MÉTODO: Parsear parámetros compuestos
-        parseFiltrosFromUrl: function() {
+
+        parseFiltros: function(filtrosString) {
+            console.log('Parseando filtros string:', filtrosString);
+            
             var filtros = {
                 anio: null,
                 cla: null, 
@@ -48,9 +59,11 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                 usuario: null
             };
             
-            // Intentar obtener de options primero
-            if (this.options.filtros) {
-                var partes = this.options.filtros.split('-');
+            if (filtrosString) {
+                var partes = filtrosString.split('-');
+                console.log('Partes de filtros:', partes);
+                
+                // Ahora son 4 partes (sin la categoría)
                 if (partes.length >= 4) {
                     filtros.anio = partes[0] !== 'null' ? partes[0] : null;
                     filtros.cla = partes[1] !== 'null' ? partes[1] : null;
@@ -59,27 +72,63 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                 }
             }
             
+            console.log('Filtros finales:', filtros);
             return filtros;
         },
         
         data: function () {
             return {
                 categoriaNombre: this.categoriaNombre,
-                // Ocultar filtros ya que vienen por parámetros
-                mostrarFiltros: false
+                filtros: this.filtros,
+                COLORES: this.COLORES,
+                LABELS: this.LABELS
             };
         },
         
         afterRender: function () {
-            console.log('afterRender categoria-detalle ejecutado');
+            console.log('=== AFTER RENDER CATEGORIA-DETALLE ===');
+            
+            // Mostrar loading inicial
+            this.mostrarLoadingInicial();
+            
+            // Configurar texto específico de categoría
+            this.configurarTextoCategoria();
+            
+            // Iniciar carga de datos en segundo plano
+            this.iniciarCargaDatos();
+        },
+
+        configurarTextoCategoria: function () {
+            var textoElement = this.$el.find('#texto-categoria');
+            var contenedorElement = this.$el.find('#texto-categoria-especifica');
+            
+            if (this.textosCategorias.hasOwnProperty(this.categoriaNombre)) {
+                textoElement.text(this.textosCategorias[this.categoriaNombre]);
+                contenedorElement.show();
+                console.log('✅ Texto específico mostrado para categoría:', this.categoriaNombre);
+            } else {
+                contenedorElement.hide();
+                console.log('ℹ️ No hay texto específico para categoría:', this.categoriaNombre);
+            }
+        },
+
+        mostrarLoadingInicial: function () {
+            console.log('Mostrando loading inicial');
+            this.$el.find('#loading-area').show();
+            this.$el.find('#content-area').hide();
+            this.$el.find('#no-data-area').hide();
+        },
+
+        iniciarCargaDatos: function () {
+            console.log('=== INICIANDO CARGA DE DATOS EN SEGUNDO PLANO ===');
             
             // Verificar si Chart.js está cargado
             if (typeof Chart === 'undefined') {
-                console.log('Cargando Chart.js para categoria-detalle...');
+                console.log('Cargando Chart.js...');
                 this.cargarChartJS();
             } else {
-                this.generarGauge();
-                this.generarTablaPreguntas();
+                console.log('Chart.js ya está cargado, iniciando carga de datos...');
+                this.cargarDatos();
             }
         },
 
@@ -87,130 +136,168 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             var script = document.createElement('script');
             script.src = 'client/custom/modules/encuesta-de-liderazgo/lib/chart.min.js';
             script.onload = function() {
-                console.log('Chart.js cargado para categoria-detalle');
-                this.generarGauge();
-                this.generarTablaPreguntas();
+                console.log('Chart.js cargado exitosamente');
+                this.cargarDatos();
             }.bind(this);
             script.onerror = function() {
                 console.error('Error al cargar Chart.js');
-                this.wait(false);
+                Espo.Ui.error('Error al cargar la librería de gráficos');
+                this.mostrarError('Error al cargar librerías necesarias');
             }.bind(this);
             document.head.appendChild(script);
         },
         
         cargarDatos: function () {
-            console.log('Cargando datos para categoría:', this.categoriaNombre, 'con filtros:', this.filtros);
-            this.mostrarLoading(true);
+            console.log('=== CARGANDO DATOS ESPECÍFICOS DE CATEGORÍA ===');
+            console.log('Categoría:', this.categoriaNombre, 'Filtros:', this.filtros);
             
-            // Primero encontrar la categoría por nombre
-            this.fetchCategorias().then(function (categorias) {
-                var categoria = categorias.find(c => 
-                    c.name && c.name.toLowerCase() === this.categoriaNombre.toLowerCase()
-                );
-                
-                if (!categoria) {
-                    console.error('Categoría no encontrada:', this.categoriaNombre);
-                    Espo.Ui.error('Categoría no encontrada: ' + this.categoriaNombre);
+            // PASO 1: Encontrar la categoría por nombre
+            this.fetchCategoriaByNombre(this.categoriaNombre)
+                .then(function (categoria) {
+                    if (!categoria) {
+                        console.error('❌ Categoría no encontrada:', this.categoriaNombre);
+                        Espo.Ui.error('Categoría no encontrada: ' + this.categoriaNombre);
+                        this.mostrarNoData();
+                        return Promise.reject('Categoría no encontrada');
+                    }
+                    
+                    this.state.categoriaId = categoria.id;
+                    console.log('✅ ID de categoría encontrado:', this.state.categoriaId);
+                    
+                    // PASO 2: Cargar en paralelo encuestas y preguntas DE ESTA CATEGORÍA
+                    return Promise.all([
+                        this.fetchEncuestasFiltradas(),
+                        this.fetchPreguntasPorCategoria(this.state.categoriaId)
+                    ]);
+                }.bind(this))
+                .then(function (resultados) {
+                    var encuestas = resultados[0];
+                    var preguntas = resultados[1];
+                    
+                    this.state.encuestas = encuestas || [];
+                    this.state.preguntas = preguntas || [];
+                    
+                    console.log('📊 Encuestas cargadas:', this.state.encuestas.length);
+                    console.log('❓ Preguntas de esta categoría:', this.state.preguntas.length);
+                    
+                    if (this.state.encuestas.length === 0 || this.state.preguntas.length === 0) {
+                        console.log('⚠️ No hay datos suficientes');
+                        this.mostrarNoData();
+                        return Promise.reject('No hay datos');
+                    }
+                    
+                    // PASO 3: Cargar SOLO respuestas de estas encuestas Y preguntas
+                    return this.fetchRespuestasPorEncuestas(
+                        this.state.encuestas.map(e => e.id),
+                        this.state.preguntas.map(p => p.id)
+                    );
+                }.bind(this))
+                .then(function (respuestas) {
+                    this.state.respuestas = respuestas || [];
+                    
+                    console.log('✅ Respuestas cargadas (FILTRADAS):', this.state.respuestas.length);
+                    
+                    if (this.state.respuestas.length === 0) {
+                        console.log('⚠️ No hay respuestas para los filtros aplicados');
+                        this.mostrarNoData();
+                        return;
+                    }
+                    
+                    // Generar visualizaciones
+                    this.generarGauge();
+                    this.generarTablaPreguntas();
+                    this.mostrarContenidoCompleto();
+                    
+                }.bind(this))
+                .catch(function (error) {
+                    console.error('❌ Error en carga de datos:', error);
+                    if (error !== 'Categoría no encontrada' && error !== 'No hay datos') {
+                        Espo.Ui.error('Error al cargar los datos de la categoría');
+                    }
                     this.mostrarNoData();
-                    return;
-                }
-                
-                this.categoriaId = categoria.id;
-                console.log('ID de categoría encontrado:', this.categoriaId);
-                
-                return Promise.all([
-                    this.fetchEncuestasFiltradas(),
-                    this.fetchPreguntasPorCategoria(this.categoriaId)
-                ]);
-            }.bind(this)).then(function (resultados) {
-                if (!resultados) return;
-                
-                var encuestas = resultados[0];
-                var preguntas = resultados[1];
-                
-                this.state.encuestas = encuestas || [];
-                this.state.preguntas = preguntas || [];
-                
-                console.log('Encuestas cargadas:', this.state.encuestas.length);
-                console.log('Preguntas cargadas:', this.state.preguntas.length);
-                
-                if (this.state.encuestas.length === 0 || this.state.preguntas.length === 0) {
-                    console.log('No hay datos suficientes');
-                    this.mostrarNoData();
-                    return;
-                }
-                
-                return this.fetchRespuestasPorEncuestas(this.state.encuestas.map(e => e.id));
-            }.bind(this)).then(function (respuestas) {
-                if (!respuestas) return;
-                
-                // Filtrar solo respuestas de preguntas de esta categoría
-                var preguntasIds = this.state.preguntas.map(p => p.id);
-                this.state.respuestas = respuestas.filter(r => 
-                    preguntasIds.includes(r.preguntaId) && r.seleccion
-                );
-                
-                console.log('Respuestas filtradas:', this.state.respuestas.length);
-                
-                if (this.state.respuestas.length === 0) {
-                    this.mostrarNoData();
-                    return;
-                }
-                
-                this.mostrarContenido();
-                
-            }.bind(this)).catch(function (error) {
-                console.error('Error cargando datos:', error);
-                Espo.Ui.error('Error al cargar los datos de la categoría');
-                this.mostrarNoData();
-            }.bind(this));
+                }.bind(this));
         },
         
-        // MÉTODOS FETCH (solo los necesarios, eliminamos los de teams)
-        
-        fetchCategorias: function () {
+        // MÉTODO OPTIMIZADO: Buscar UNA SOLA categoría por nombre
+        fetchCategoriaByNombre: function (nombreCategoria) {
+            console.log('Buscando categoría por nombre:', nombreCategoria);
+            
             return new Promise(function (resolve, reject) {
                 this.getCollectionFactory().create('EncuestaLiderazgoCategoria', function (collection) {
-                    collection.maxSize = 200;
+                    collection.maxSize = 1; // Solo necesitamos UNA
+                    collection.where = [
+                        {
+                            type: 'equals',
+                            attribute: 'name',
+                            value: nombreCategoria
+                        }
+                    ];
+                    
+                    console.log('Where conditions para categoría:', collection.where);
                     
                     collection.fetch().then(function () {
-                        var models = collection.models || [];
-                        var categorias = models.map(m => ({
-                            id: m.id,
-                            name: m.get('name')
-                        }));
-                        resolve(categorias);
-                    }).catch(reject);
+                        console.log('Categorías encontradas:', collection.length);
+                        if (collection.length > 0) {
+                            var model = collection.models[0];
+                            console.log('✅ Categoría encontrada:', model.id, model.get('name'));
+                            resolve({
+                                id: model.id,
+                                name: model.get('name')
+                            });
+                        } else {
+                            console.log('❌ No se encontró la categoría');
+                            resolve(null);
+                        }
+                    }).catch(function(error) {
+                        console.error('Error buscando categoría:', error);
+                        reject(error);
+                    });
                 }.bind(this));
             }.bind(this));
         },
         
+        // MÉTODO OPTIMIZADO: Solo preguntas de ESTA categoría
         fetchPreguntasPorCategoria: function (categoriaId) {
+            console.log('Buscando preguntas para categoría ID:', categoriaId);
+            
             return new Promise(function (resolve, reject) {
                 this.getCollectionFactory().create('EncuestaLiderazgoPregunta', function (collection) {
                     collection.maxSize = 200;
                     collection.where = [
-                        { type: 'equals', attribute: 'categoriaLiderazgoId', value: categoriaId }
+                        { 
+                            type: 'equals', 
+                            attribute: 'categoriaLiderazgoId', 
+                            value: categoriaId 
+                        }
                     ];
+                    collection.data = { 
+                        orderBy: 'orden', 
+                        order: 'asc' 
+                    };
+                    
+                    console.log('Where conditions para preguntas:', collection.where);
                     
                     collection.fetch().then(function () {
-                        var models = collection.models || [];
-                        var preguntas = models.map(m => ({
+                        var preguntas = collection.models.map(m => ({
                             id: m.id,
                             pregunta: m.get('pregunta'),
                             orden: m.get('orden') || 0
                         }));
+                        console.log('✅ Preguntas encontradas:', preguntas.length);
                         resolve(preguntas);
-                    }).catch(reject);
+                    }).catch(function(error) {
+                        console.error('Error buscando preguntas:', error);
+                        reject(error);
+                    });
                 }.bind(this));
             }.bind(this));
         },
         
+        // MÉTODO OPTIMIZADO: Encuestas filtradas
         fetchEncuestasFiltradas: function () {
+            console.log('Buscando encuestas con filtros:', this.filtros);
+            
             return new Promise(function (resolve, reject) {
-                var maxSize = 200;
-                var allEncuestas = [];
-                
                 var whereConditions = [];
                 
                 // Filtro por año
@@ -255,146 +342,283 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                 
                 console.log('Where conditions para encuestas:', whereConditions);
                 
-                var fetchPage = function (offset) {
-                    this.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
-                        collection.maxSize = maxSize;
-                        collection.offset = offset;
-                        collection.where = whereConditions;
-                        
-                        collection.fetch().then(function () {
-                            var models = collection.models || [];
-                            allEncuestas = allEncuestas.concat(models.map(m => ({
-                                id: m.id,
-                                fecha: m.get('fecha'),
-                                usuarioEvaluadoId: m.get('usuarioEvaluadoId')
-                            })));
-                            
-                            if (models.length === maxSize && allEncuestas.length < collection.total) {
-                                fetchPage(offset + maxSize);
-                            } else {
-                                resolve(allEncuestas);
-                            }
-                        }).catch(reject);
-                    }.bind(this));
-                }.bind(this);
-                
-                fetchPage(0);
+                this.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
+                    collection.maxSize = 200;
+                    collection.where = whereConditions;
+                    
+                    collection.fetch().then(function () {
+                        var encuestas = collection.models.map(m => ({
+                            id: m.id,
+                            fecha: m.get('fecha'),
+                            usuarioEvaluadoId: m.get('usuarioEvaluadoId')
+                        }));
+                        console.log('✅ Encuestas encontradas:', encuestas.length);
+                        resolve(encuestas);
+                    }).catch(function(error) {
+                        console.error('Error buscando encuestas:', error);
+                        reject(error);
+                    });
+                }.bind(this));
             }.bind(this));
         },
         
-        fetchRespuestasPorEncuestas: function (encuestaIds) {
+        // MÉTODO MÁS OPTIMIZADO: Solo respuestas de encuestas específicas Y preguntas específicas
+        fetchRespuestasPorEncuestas: function (encuestaIds, preguntaIds) {
+            console.log('Buscando respuestas para:', encuestaIds.length, 'encuestas y', preguntaIds.length, 'preguntas');
+            
             return new Promise(function (resolve, reject) {
-                if (encuestaIds.length === 0) {
+                if (encuestaIds.length === 0 || preguntaIds.length === 0) {
+                    console.log('No hay encuestas o preguntas para buscar respuestas');
                     resolve([]);
                     return;
                 }
                 
-                var maxSize = 200;
-                var allRespuestas = [];
-                
-                var processBatch = function (batchIndex) {
-                    if (batchIndex >= Math.ceil(encuestaIds.length / 50)) {
-                        resolve(allRespuestas);
-                        return;
-                    }
+                this.getCollectionFactory().create('EncuestaLiderazgoRespuesta', function (collection) {
+                    collection.maxSize = 500; // Límite razonable
+                    collection.where = [
+                        { 
+                            type: 'in', 
+                            attribute: 'encuestaLiderazgoId', 
+                            value: encuestaIds 
+                        },
+                        { 
+                            type: 'in', 
+                            attribute: 'preguntaId', 
+                            value: preguntaIds 
+                        }
+                    ];
                     
-                    var batch = encuestaIds.slice(batchIndex * 50, (batchIndex + 1) * 50);
+                    console.log('Where conditions para respuestas:', collection.where);
                     
-                    var fetchPage = function (offset) {
-                        this.getCollectionFactory().create('EncuestaLiderazgoRespuesta', function (collection) {
-                            collection.maxSize = maxSize;
-                            collection.offset = offset;
-                            collection.where = [
-                                { type: 'in', attribute: 'encuestaLiderazgoId', value: batch }
-                            ];
-                            
-                            collection.fetch().then(function () {
-                                var models = collection.models || [];
-                                allRespuestas = allRespuestas.concat(models.map(m => ({
-                                    id: m.id,
-                                    encuestaLiderazgoId: m.get('encuestaLiderazgoId'),
-                                    preguntaId: m.get('preguntaId'),
-                                    seleccion: m.get('seleccion'),
-                                    texto: m.get('texto')
-                                })));
-                                
-                                if (models.length === maxSize) {
-                                    fetchPage(offset + maxSize);
-                                } else {
-                                    processBatch(batchIndex + 1);
-                                }
-                            }.bind(this)).catch(reject);
-                        }.bind(this));
-                    }.bind(this);
-                    
-                    fetchPage(0);
-                }.bind(this);
-                
-                processBatch(0);
+                    collection.fetch().then(function () {
+                        var respuestas = collection.models
+                            .filter(m => m.get('seleccion')) // Solo con selección
+                            .map(m => ({
+                                id: m.id,
+                                encuestaLiderazgoId: m.get('encuestaLiderazgoId'),
+                                preguntaId: m.get('preguntaId'),
+                                seleccion: m.get('seleccion'),
+                                texto: m.get('texto')
+                            }));
+                        
+                        console.log('✅ Respuestas filtradas encontradas:', respuestas.length);
+                        resolve(respuestas);
+                    }).catch(function(error) {
+                        console.error('Error buscando respuestas:', error);
+                        reject(error);
+                    });
+                }.bind(this));
             }.bind(this));
         },
         
         generarGauge: function () {
-            console.log('Generando gauge para categoría');
+            console.log('Generando gráfico de distribución para categoría');
             
+            var container = this.$el.find('.gauge-wrapper');
             var ctx = document.getElementById('gauge-general');
             if (!ctx) {
                 console.error('No se encontró el canvas para el gauge');
                 return;
             }
             
-            var sumaTotal = 0;
-            var conteoTotal = 0;
+            // TAMAÑO REDUCIDO DEL CANVAS
+            ctx.style.width = '350px';
+            ctx.style.height = '350px';
+            ctx.width = 350;
+            ctx.height = 350;
+            
+            // Calcular distribución de respuestas
+            var distribucion = { '4': 0, '3': 0, '2': 0, '1': 0 };
+            var totalRespuestas = 0;
             
             this.state.respuestas.forEach(r => {
-                var valor = parseInt(r.seleccion, 10);
-                if (!isNaN(valor)) {
-                    sumaTotal += valor;
-                    conteoTotal++;
+                if (distribucion.hasOwnProperty(r.seleccion)) {
+                    distribucion[r.seleccion]++;
+                    totalRespuestas++;
                 }
             });
             
-            var promedio = conteoTotal > 0 ? (sumaTotal / conteoTotal) : 0;
-            var porcentaje = (promedio / 4) * 100;
+            console.log('📊 Distribución de respuestas:', distribucion);
+            console.log('📈 Total respuestas:', totalRespuestas);
             
-            console.log('Estadísticas gauge:', { promedio, porcentaje, totalRespuestas: conteoTotal });
+            // Calcular promedio (en base 10)
+            var sumaTotal = parseInt(distribucion['4']) * 4 + parseInt(distribucion['3']) * 3 + 
+                        parseInt(distribucion['2']) * 2 + parseInt(distribucion['1']) * 1;
+            var promedio = totalRespuestas > 0 ? (sumaTotal / totalRespuestas) : 0;
+            var promedioBase10 = totalRespuestas > 0 ? (promedio / 4 * 10) : 0;
             
-            this.$el.find('#total-respuestas').text(conteoTotal);
-            this.$el.find('#promedio-general').text(promedio.toFixed(2));
+            // Actualizar estadísticas
+            this.$el.find('#total-respuestas').text(totalRespuestas);
+            this.$el.find('#promedio-general').text(promedioBase10.toFixed(2) + '/10');
             
+            // Destruir chart anterior si existe
             if (this.state.gaugeChart) {
                 this.state.gaugeChart.destroy();
             }
             
-            // Asegurarse de que Chart esté disponible
+            // Limpiar etiquetas anteriores
+            container.find('.chart-labels').remove();
+            
             if (typeof Chart === 'undefined') {
                 console.error('Chart.js no está disponible');
                 return;
             }
             
+            // Preparar datos para el gráfico - ORDENADOS de 1 a 4
+            var labels = [
+                this.LABELS['1'], // Nunca
+                this.LABELS['2'], // Pocas Veces  
+                this.LABELS['3'], // Casi Siempre
+                this.LABELS['4']  // Siempre
+            ];
+            var data = [
+                distribucion['1'], // Nunca
+                distribucion['2'], // Pocas Veces
+                distribucion['3'], // Casi Siempre
+                distribucion['4']  // Siempre
+            ];
+            var backgroundColors = [
+                this.COLORES['1'], // Nunca - #333333 (oscuro)
+                this.COLORES['2'], // Pocas Veces - #D3D3D3 (claro)
+                this.COLORES['3'], // Casi Siempre - #6B6F47 (oscuro)  
+                this.COLORES['4']  // Siempre - #A0A57E (medio)
+            ];
+            
+            // Calcular porcentajes
+            var porcentajes = data.map(val => totalRespuestas > 0 ? ((val / totalRespuestas) * 100).toFixed(1) : 0);
+            
             this.state.gaugeChart = new Chart(ctx.getContext('2d'), {
                 type: 'doughnut',
                 data: {
+                    labels: labels,
                     datasets: [{
-                        data: [porcentaje, 100 - porcentaje],
-                        backgroundColor: [this.obtenerColorPorPromedio(promedio), '#e0e0e0'],
-                        borderWidth: 0
+                        data: data,
+                        backgroundColor: backgroundColors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
-                    circumference: 180,
-                    rotation: 270,
-                    cutout: '75%',
+                    cutout: '50%',
                     plugins: {
-                        legend: { display: false },
-                        tooltip: { enabled: false }
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    var label = context.label || '';
+                                    var value = context.parsed || 0;
+                                    var porcentaje = totalRespuestas > 0 ? ((value / totalRespuestas) * 100).toFixed(1) : 0;
+                                    return label + ': ' + value + ' (' + porcentaje + '%)';
+                                }
+                            }
+                        }
                     }
-                }
+                },
+                plugins: [{
+                    id: 'etiquetasExternas',
+                    afterDraw: function(chart) {
+                        if (totalRespuestas === 0) return;
+                        
+                        var chartArea = chart.chartArea;
+                        var centerX = (chartArea.left + chartArea.right) / 2;
+                        var centerY = (chartArea.top + chartArea.bottom) / 2;
+                        var radius = (chartArea.right - chartArea.left) / 2;
+                        
+                        // Crear contenedor para etiquetas (UNA SOLA VEZ)
+                        var labelsContainer = document.createElement('div');
+                        labelsContainer.className = 'chart-labels';
+                        container.append(labelsContainer);
+                        
+                        // POSICIONES PREDEFINIDAS EN ORDEN LÓGICO:
+                        // 0. Nunca (valor 1) - Arriba izquierda
+                        // 1. Pocas Veces (valor 2) - Arriba derecha  
+                        // 2. Casi Siempre (valor 3) - Abajo derecha
+                        // 3. Siempre (valor 4) - Abajo izquierda
+                        var posicionesEtiquetas = [
+                            { x: centerX - radius * 1.4, y: centerY - radius * 0.8 }, // Arriba izquierda - Nunca (1)
+                            { x: centerX + radius * 1.4, y: centerY - radius * 0.8 }, // Arriba derecha - Pocas Veces (2)
+                            { x: centerX + radius * 1.4, y: centerY + radius * 0.8 }, // Abajo derecha - Casi Siempre (3)
+                            { x: centerX - radius * 1.4, y: centerY + radius * 0.8 }  // Abajo izquierda - Siempre (4)
+                        ];
+                        
+                        var angleOffset = -Math.PI / 2; // Empezar desde arriba
+                        
+                        // Procesar cada segmento en orden del gráfico (1, 2, 3, 4)
+                        for (var i = 0; i < data.length; i++) {
+                            if (data[i] === 0) continue;
+                            
+                            var sliceAngle = (data[i] / totalRespuestas) * 2 * Math.PI;
+                            var angle = angleOffset + sliceAngle / 2; // Ángulo al centro del segmento
+                            var porcentaje = porcentajes[i];
+                            var posicionEtiqueta = posicionesEtiquetas[i];
+                            
+                            // Punto en el borde de la dona (centro del segmento)
+                            var pointX = centerX + Math.cos(angle) * (radius * 0.9);
+                            var pointY = centerY + Math.sin(angle) * (radius * 0.9);
+                            
+                            // Crear línea conectadora
+                            var line = document.createElement('div');
+                            line.className = 'chart-label-line';
+                            
+                            var lineLength = Math.sqrt(
+                                Math.pow(posicionEtiqueta.x - pointX, 2) + 
+                                Math.pow(posicionEtiqueta.y - pointY, 2)
+                            );
+                            
+                            var lineAngle = Math.atan2(posicionEtiqueta.y - pointY, posicionEtiqueta.x - pointX);
+                            
+                            line.style.width = lineLength + 'px';
+                            line.style.height = '1px';
+                            line.style.left = pointX + 'px';
+                            line.style.top = pointY + 'px';
+                            line.style.transform = 'rotate(' + lineAngle + 'rad)';
+                            line.style.background = backgroundColors[i];
+                            
+                            labelsContainer.appendChild(line);
+                            
+                            // Crear etiqueta
+                            var label = document.createElement('div');
+                            label.className = 'chart-label';
+                            label.style.left = posicionEtiqueta.x + 'px';
+                            label.style.top = posicionEtiqueta.y + 'px';
+                            label.style.transform = 'translate(-50%, -50%)';
+                            label.style.borderColor = backgroundColors[i];
+                            
+                            // MEJOR CONTRASTE DE COLORES - Texto blanco para fondos oscuros
+                            var esFondoOscuro = (
+                                backgroundColors[i] === '#333333' ||  // Nunca - muy oscuro
+                                backgroundColors[i] === '#6B6F47'     // Casi Siempre - oscuro
+                            );
+                            
+                            if (esFondoOscuro) {
+                                label.style.background = backgroundColors[i];
+                                label.style.color = '#ffffff'; // Texto blanco
+                                // También cambiar el color del valor/porcentaje a un gris claro
+                                label.querySelector = function() { return null; }; // Evitar errores
+                            } else {
+                                label.style.background = '#ffffff';
+                                label.style.color = '#333333'; // Texto oscuro
+                            }
+                            
+                            // Usar innerHTML directamente para evitar problemas con querySelector
+                            label.innerHTML = '<div style="font-weight: bold;">' + labels[i] + '</div>' + 
+                                            '<div class="chart-label-value" style="color: ' + 
+                                            (esFondoOscuro ? '#e0e0e0' : '#666666') + ';">' + 
+                                            data[i] + ' (' + porcentaje + '%)</div>';
+                            
+                            labelsContainer.appendChild(label);
+                            
+                            angleOffset += sliceAngle;
+                        }
+                    }
+                }]
             });
             
-            console.log('Gauge generado exitosamente');
+            console.log('✅ Gráfico final con etiquetas mejoradas generado exitosamente');
         },
         
         obtenerColorPorPromedio: function (promedio) {
@@ -405,13 +629,19 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         },
         
         generarTablaPreguntas: function () {
+            console.log('Generando tabla de preguntas');
+            
             var tbody = this.$el.find('#preguntas-tbody');
             tbody.empty();
+            
+            var preguntasConDatos = 0;
             
             this.state.preguntas.sort((a, b) => a.orden - b.orden).forEach(function (pregunta) {
                 var respuestasPregunta = this.state.respuestas.filter(r => r.preguntaId === pregunta.id);
                 
                 if (respuestasPregunta.length === 0) return;
+                
+                preguntasConDatos++;
                 
                 var conteo = { '4': 0, '3': 0, '2': 0, '1': 0 };
                 respuestasPregunta.forEach(r => {
@@ -424,7 +654,9 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                 var suma = parseInt(conteo['4']) * 4 + parseInt(conteo['3']) * 3 + 
                            parseInt(conteo['2']) * 2 + parseInt(conteo['1']) * 1;
                 var promedio = total > 0 ? (suma / total) : 0;
+                var promedioBase10 = total > 0 ? (promedio / 4 * 10) : 0; // Convertir a base 10
                 
+                // Porcentajes normales (base 100)
                 var porcentajes = {
                     '4': total > 0 ? ((conteo['4'] / total) * 100).toFixed(1) : '0.0',
                     '3': total > 0 ? ((conteo['3'] / total) * 100).toFixed(1) : '0.0',
@@ -439,12 +671,14 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                         <td class="porcentaje-cell">${porcentajes['3']}%</td>
                         <td class="porcentaje-cell">${porcentajes['2']}%</td>
                         <td class="porcentaje-cell">${porcentajes['1']}%</td>
-                        <td class="promedio-cell">${promedio.toFixed(2)}</td>
+                        <td class="promedio-cell">${promedioBase10.toFixed(2)}/10</td>
                     </tr>
                 `;
                 
                 tbody.append(row);
             }.bind(this));
+            
+            console.log('✅ Tabla generada con', preguntasConDatos, 'preguntas con datos');
         },
         
         escapeHtml: function (text) {
@@ -459,30 +693,27 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             return text.replace(/[&<>"']/g, m => map[m]);
         },
         
-        mostrarLoading: function (show) {
-            if (show) {
-                this.$el.find('#loading-area').show();
-                this.$el.find('#content-area').hide();
-                this.$el.find('#no-data-area').hide();
-            } else {
-                this.$el.find('#loading-area').hide();
-            }
-        },
-        
-        mostrarContenido: function () {
-            console.log('Mostrando contenido de categoria-detalle');
+        mostrarContenidoCompleto: function () {
+            console.log('✅ Mostrando contenido completo con datos cargados');
             this.$el.find('#loading-area').hide();
             this.$el.find('#content-area').show();
             this.$el.find('#no-data-area').hide();
-            this.wait(false);
+            this.state.datosCargados = true;
         },
         
         mostrarNoData: function () {
-            console.log('Mostrando "no data" en categoria-detalle');
+            console.log('⚠️ Mostrando "no data"');
             this.$el.find('#loading-area').hide();
             this.$el.find('#content-area').hide();
             this.$el.find('#no-data-area').show();
-            this.wait(false);
+        },
+        
+        mostrarError: function (mensaje) {
+            console.error('💥 Error:', mensaje);
+            this.$el.find('#loading-area').hide();
+            this.$el.find('#content-area').hide();
+            this.$el.find('#no-data-area').show();
+            this.$el.find('#no-data-area p').text(mensaje || 'Error al cargar los datos');
         }
         
     });

@@ -5,8 +5,6 @@ define('encuesta-de-liderazgo:controllers/liderazgo', ['controllers/base'], func
         defaultAction: 'index',
         
         actionIndex: function () {
-            // Limpiar cualquier vista anterior
-            this.clearView();
             this.main('encuesta-de-liderazgo:views/evaluacion-general', {
                 scope: 'Liderazgo'
             });
@@ -19,62 +17,70 @@ define('encuesta-de-liderazgo:controllers/liderazgo', ['controllers/base'], func
                 return;
             }
             
-            // Limpiar cualquier vista anterior
-            this.clearView();
             this.main('encuesta-de-liderazgo:views/admin');
         },
         
         actionCategoria: function (options) {
-            console.log('actionCategoria llamada con options:', options);
+            console.log('🎯🎯🎯 ACTION CATEGORIA EJECUTADO 🎯🎯🎯');
+            console.log('Options recibidas:', options);
+            console.log('Tipo de options:', typeof options);
             
             var categoriaNombre = '';
             var filtrosParam = '';
             
-            // Obtener parámetros
-            if (options && options.categoria) {
-                categoriaNombre = decodeURIComponent(options.categoria);
-                // El segundo parámetro son los filtros compuestos
-                if (options.filtros) {
-                    filtrosParam = options.filtros;
+            // CORRECCIÓN: options es directamente el string de filtros, no un objeto
+            if (options && typeof options === 'string') {
+                filtrosParam = options;
+                console.log('✅ Filtros recibidos como string:', filtrosParam);
+                
+                // Parsear los filtros para extraer la categoría
+                var partes = filtrosParam.split('-');
+                console.log('Partes de filtros:', partes);
+                
+                if (partes.length >= 5) {
+                    // La categoría es el primer parámetro
+                    categoriaNombre = partes[0] !== 'null' ? decodeURIComponent(partes[0]) : '';
+                    console.log('✅ Categoría extraída:', categoriaNombre);
+                    
+                    // Reconstruir filtros sin la categoría
+                    var filtrosReales = {
+                        anio: partes[1] !== 'null' ? partes[1] : null,
+                        cla: partes[2] !== 'null' ? partes[2] : null,
+                        oficina: partes[3] !== 'null' ? partes[3] : null,
+                        usuario: partes[4] !== 'null' ? partes[4] : null
+                    };
+                    
+                    console.log('✅ Filtros parseados:', filtrosReales);
+                    
+                    // Convertir filtros a string para categoria-detalle
+                    var filtrosString = filtrosReales.anio + '-' + filtrosReales.cla + '-' + 
+                                    filtrosReales.oficina + '-' + filtrosReales.usuario;
+                    
+                    console.log('📝 Cargando vista categoria-detalle con:', {
+                        categoriaNombre: categoriaNombre,
+                        filtros: filtrosString
+                    });
+                    
+                    // Cargar la vista con los parámetros
+                    this.main('encuesta-de-liderazgo:views/categoria-detalle', {
+                        categoriaNombre: categoriaNombre,
+                        filtros: filtrosString
+                    });
+                    
+                } else {
+                    console.error('❌ Formato de filtros incorrecto. Partes:', partes.length);
+                    Espo.Ui.error('Error en los parámetros de la categoría');
+                    this.getRouter().navigate('#Liderazgo', {trigger: true});
+                    return;
                 }
             } else {
-                // Parsear desde URL
-                var currentUrl = this.getRouter().getCurrentUrl();
-                console.log('Current URL:', currentUrl);
-                
-                var match = currentUrl.match(/categoria\/([^\/]+)\/([^\/\?]+)/);
-                if (match && match[1]) {
-                    categoriaNombre = decodeURIComponent(match[1]);
-                    filtrosParam = match[2];
-                    console.log('Categoría desde URL:', categoriaNombre, 'Filtros:', filtrosParam);
-                }
-            }
-            
-            console.log('Categoría a cargar:', categoriaNombre, 'con filtros:', filtrosParam);
-            
-            if (!categoriaNombre) {
-                console.error('No se pudo determinar el nombre de la categoría');
-                Espo.Ui.warning('No se especificó una categoría válida');
+                console.error('❌ Options no es un string válido:', options);
+                Espo.Ui.error('No se especificó una categoría');
                 this.getRouter().navigate('#Liderazgo', {trigger: true});
                 return;
             }
             
-            console.log('Cargando vista categoria-detalle para:', categoriaNombre);
-            
-            // Cargar la vista con el nombre de la categoría y filtros
-            this.main('encuesta-de-liderazgo:views/categoria-detalle', {
-                categoriaNombre: categoriaNombre,
-                filtros: filtrosParam
-            });
-        },
-        // Método para limpiar vistas anteriores
-        clearView: function() {
-            if (this.view) {
-                this.view.remove();
-                this.view = null;
-            }
-            // También limpiar el contenedor principal
-            $('#main').empty();
+            console.log('✅ Vista categoria-detalle solicitada');
         }
         
     });

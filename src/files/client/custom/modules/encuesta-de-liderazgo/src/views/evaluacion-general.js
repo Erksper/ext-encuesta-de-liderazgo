@@ -20,7 +20,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
         
         setup: function () {
-            
             this.esAdmin = this.getUser().isAdmin();
             
             this.state = {
@@ -35,7 +34,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 categorias: [],
                 encuestas: [],
                 respuestas: [],
-                preguntas: []
+                preguntas: [],
+                datosCargados: false,
+                cargandoDatos: false
             };
             
             this.wait(true);
@@ -49,62 +50,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 script.src = 'client/custom/modules/encuesta-de-liderazgo/lib/chart.min.js';
                 script.onload = function() {
                     console.log('Chart.js cargado exitosamente');
-                    
-                    // Registrar plugin personalizado para mostrar porcentajes
-                    if (typeof Chart !== 'undefined') {
-                        Chart.register({
-                            id: 'customLabels',
-                            afterDatasetsDraw: function(chart) {
-                                if (chart.config.type === 'doughnut') {
-                                    var ctx = chart.ctx;
-                                    chart.data.datasets.forEach(function(dataset, i) {
-                                        var meta = chart.getDatasetMeta(i);
-                                        if (!meta.hidden) {
-                                            meta.data.forEach(function(element, index) {
-                                                ctx.fillStyle = '#fff';
-                                                var fontSize = 14;
-                                                var fontStyle = 'bold';
-                                                var fontFamily = 'Arial';
-                                                ctx.font = fontStyle + ' ' + fontSize + 'px ' + fontFamily;
-                                                
-                                                var dataString = dataset.data[index].toString();
-                                                var total = dataset.data.reduce((a, b) => a + b, 0);
-                                                var percentage = ((dataset.data[index] / total) * 100).toFixed(1) + '%';
-                                                
-                                                ctx.textAlign = 'center';
-                                                ctx.textBaseline = 'middle';
-                                                
-                                                var position = element.tooltipPosition();
-                                                ctx.fillText(percentage, position.x, position.y);
-                                            });
-                                        }
-                                    });
-                                } else if (chart.config.type === 'bar') {
-                                    var ctx = chart.ctx;
-                                    chart.data.datasets.forEach(function(dataset, i) {
-                                        var meta = chart.getDatasetMeta(i);
-                                        if (!meta.hidden) {
-                                            meta.data.forEach(function(element, index) {
-                                                ctx.fillStyle = '#333';
-                                                var fontSize = 12;
-                                                var fontStyle = 'bold';
-                                                var fontFamily = 'Arial';
-                                                ctx.font = fontStyle + ' ' + fontSize + 'px ' + fontFamily;
-                                                
-                                                var dataString = dataset.data[index].toFixed(1) + '%';
-                                                
-                                                ctx.textAlign = 'left';
-                                                ctx.textBaseline = 'middle';
-                                                
-                                                ctx.fillText(dataString, element.x + 5, element.y);
-                                            });
-                                        }
-                                    });
-                                }
-                            }
-                        });
-                    }
-                    
+                    this.registrarPluginsChart();
                     this.verificarCargaCompleta();
                 }.bind(this);
                 script.onerror = function() {
@@ -113,7 +59,120 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     this.wait(false);
                 }.bind(this);
                 document.head.appendChild(script);
+            } else {
+                // Si Chart.js ya está cargado, registrar plugins inmediatamente
+                this.registrarPluginsChart();
+                this.verificarCargaCompleta();
             }
+        },
+
+        // NUEVO MÉTODO: Registrar plugins de Chart.js
+        registrarPluginsChart: function() {
+            if (typeof Chart === 'undefined') return;
+            
+            console.log('Registrando plugins personalizados...');
+            
+            // Plugin para mostrar porcentajes en DONAS (FUERA del borde)
+            const doughnutLabelsPlugin = {
+                id: 'doughnutLabels',
+                afterDraw: function(chart) {
+                    if (chart.config.type === 'doughnut') {
+                        var ctx = chart.ctx;
+                        var total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                        
+                        chart.data.datasets.forEach(function(dataset, i) {
+                            var meta = chart.getDatasetMeta(i);
+                            if (!meta.hidden) {
+                                meta.data.forEach(function(element, index) {
+                                    // Obtener posición del centro del segmento
+                                    var model = element;
+                                    var startAngle = model.startAngle;
+                                    var endAngle = model.endAngle;
+                                    var angle = startAngle + (endAngle - startAngle) / 2;
+                                    
+                                    // Calcular posición FUERA de la dona (1.15 veces el radio exterior)
+                                    var radius = model.outerRadius * 1.15;
+                                    var x = model.x + Math.cos(angle) * radius;
+                                    var y = model.y + Math.sin(angle) * radius;
+                                    
+                                    // Calcular porcentaje
+                                    var value = dataset.data[index];
+                                    var percentage = total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%';
+                                    
+                                    // Configurar estilo - COLOR OSCURO
+                                    ctx.fillStyle = '#333333';
+                                    ctx.font = 'bold 11px Arial';
+                                    ctx.textAlign = 'center';
+                                    ctx.textBaseline = 'middle';
+                                    
+                                    // Dibujar porcentaje
+                                    ctx.fillText(percentage, x, y);
+                                });
+                            }
+                        });
+                    }
+                }
+            };
+
+            // Plugin para mostrar porcentajes en BARRAS (CORREGIDO)
+            const barLabelsPlugin = {
+                id: 'barLabels',
+                afterDatasetsDraw: function(chart) {
+                    if (chart.config.type === 'bar') {
+                        var ctx = chart.ctx;
+                        
+                        chart.data.datasets.forEach(function(dataset, datasetIndex) {
+                            var meta = chart.getDatasetMeta(datasetIndex);
+                            if (!meta.hidden) {
+                                meta.data.forEach(function(element, index) {
+                                    // Obtener posición y valor
+                                    var value = dataset.data[index];
+                                    
+                                    // Solo mostrar si el valor es mayor a 0
+                                    if (value > 0) {
+                                        var x = element.x;
+                                        var y = element.y;
+                                        var width = element.width;
+                                        var height = element.height;
+                                        
+                                        // Para barras HORIZONTALES (como el de promedios)
+                                        if (chart.options.indexAxis === 'y') {
+                                            // Posicionar en el centro de la barra horizontal
+                                            var textX = x + width / 2;
+                                            var textY = y;
+                                            
+                                            // Configurar estilo para mejor legibilidad
+                                            ctx.fillStyle = '#FFFFFF';
+                                            ctx.font = 'bold 12px Arial';
+                                            ctx.textAlign = 'center';
+                                            ctx.textBaseline = 'middle';
+                                            
+                                            // Dibujar texto del porcentaje
+                                            ctx.fillText(value.toFixed(1) + '%', textX, textY);
+                                        } 
+                                        // Para barras VERTICALES
+                                        else {
+                                            var textX = x;
+                                            var textY = y - 15; // Posicionar arriba de la barra
+                                            
+                                            ctx.fillStyle = '#333333';
+                                            ctx.font = 'bold 12px Arial';
+                                            ctx.textAlign = 'center';
+                                            ctx.textBaseline = 'bottom';
+                                            
+                                            ctx.fillText(value.toFixed(1) + '%', textX, textY);
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    }
+                }
+            };
+
+            // Registrar los plugins
+            Chart.register(doughnutLabelsPlugin, barLabelsPlugin);
+            console.log('Plugins registrados correctamente');
         },
         
         data: function () {
@@ -212,7 +271,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         verificarCargaCompleta: function() {
             // Verificar si Chart.js está cargado y el usuario está listo
             var chartCargado = typeof Chart !== 'undefined';
-            var usuarioCargado = this.state.usuario && this.state.usuario.teamsIds;
+            var usuarioCargado = this.state.usuario && this.state.usuario.teamsIds !== undefined;
             
             if (chartCargado && usuarioCargado) {
                 console.log('Todo listo para inicializar');
@@ -243,7 +302,10 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             
             // Evento para el filtro de fecha
             fechaSelect.on('change', function (e) {
-                this.state.fechaSeleccionada = $(e.currentTarget).val();
+                var valor = $(e.currentTarget).val();
+                console.log('Fecha seleccionada:', valor);
+                
+                this.state.fechaSeleccionada = valor;
                 this.state.claSeleccionado = null;
                 this.state.oficinaSeleccionada = null;
                 this.state.usuarioSeleccionado = null;
@@ -255,22 +317,26 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 
                 if (this.state.fechaSeleccionada) {
                     // Cargar CLAs basados en la fecha seleccionada
+                    claSelect.html('<option value="">Cargando CLAs...</option>');
                     if (this.state.esCasaNacional) {
                         this.cargarTodosCLAs();
                     } else {
                         this.cargarCLAsUsuario();
                     }
-                    this.cargarDatos();
                 } else {
                     claSelect.html('<option value="">Seleccione un año primero</option>');
                     oficinaSelect.html('<option value="">Seleccione un CLA primero</option>');
                     usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
+                    this.mostrarNoData();
                 }
             }.bind(this));
             
-            // Los eventos existentes para cla, oficina y usuario se mantienen igual
+            // Evento para filtro CLA
             claSelect.on('change', function (e) {
-                this.state.claSeleccionado = $(e.currentTarget).val();
+                var valor = $(e.currentTarget).val();
+                console.log('CLA seleccionado:', valor);
+                
+                this.state.claSeleccionado = valor;
                 this.state.oficinaSeleccionada = null;
                 this.state.usuarioSeleccionado = null;
                 
@@ -279,33 +345,48 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 usuarioSelect.prop('disabled', true);
                 
                 if (this.state.claSeleccionado === 'CLA0') {
+                    // Para Territorio Nacional, no hay oficinas
                     oficinaSelect.html('<option value="">No disponible para Territorio Nacional</option>');
                     oficinaSelect.prop('disabled', true);
+                    // Cargar datos inmediatamente para Territorio Nacional
                     this.cargarDatos();
                 } else if (this.state.claSeleccionado) {
                     this.cargarOficinasPorCLA(this.state.claSeleccionado);
+                    // CARGAR DATOS AL SELECCIONAR CLA (NUEVO)
                     this.cargarDatos();
                 } else {
                     oficinaSelect.prop('disabled', true);
                     oficinaSelect.html('<option value="">Seleccione un CLA primero</option>');
+                    this.mostrarNoData();
                 }
             }.bind(this));
             
+            // Evento para filtro Oficina
             oficinaSelect.on('change', function (e) {
-                this.state.oficinaSeleccionada = $(e.currentTarget).val();
+                var valor = $(e.currentTarget).val();
+                console.log('Oficina seleccionada:', valor);
+                
+                this.state.oficinaSeleccionada = valor;
                 this.state.usuarioSeleccionado = null;
                 
                 if (this.state.oficinaSeleccionada) {
                     this.cargarUsuariosPorOficina(this.state.oficinaSeleccionada);
+                    // Cargar datos cuando se selecciona oficina
                     this.cargarDatos();
                 } else {
                     usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
                     usuarioSelect.prop('disabled', true);
+                    // Si no hay oficina seleccionada, cargar datos del CLA
+                    this.cargarDatos();
                 }
             }.bind(this));
             
+            // Evento para filtro Usuario
             usuarioSelect.on('change', function (e) {
-                this.state.usuarioSeleccionado = $(e.currentTarget).val();
+                var valor = $(e.currentTarget).val();
+                console.log('Usuario seleccionado:', valor);
+                
+                this.state.usuarioSeleccionado = valor;
                 
                 // Mostrar/ocultar sección de sugerencias
                 if (this.state.usuarioSeleccionado) {
@@ -315,11 +396,14 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     this.$el.find('#sugerencias-card').hide();
                 }
                 
+                // Recargar datos con el filtro de usuario
                 this.cargarDatos();
             }.bind(this));
         },
         
         cargarTodosCLAs: function () {
+            console.log('Cargando todos los CLAs para Casa Nacional...');
+            
             this.fetchAllTeams().then(function (teams) {
                 var claPattern = /^CLA\d+$/i;
                 var clas = teams.filter(t => claPattern.test(t.id));
@@ -327,18 +411,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 var claSelect = this.$el.find('#cla-select');
                 claSelect.html('<option value="">Seleccione un CLA</option>');
                 
-                // Buscar si existe un team llamado "Territorio Nacional"
-                var territorioNacional = teams.find(t => 
-                    t.name && t.name.toLowerCase() === 'territorio nacional'
-                );
-                
-                if (territorioNacional) {
-                    // Si existe en los teams, usar ese ID
-                    claSelect.append(`<option value="${territorioNacional.id}">${territorioNacional.name}</option>`);
-                } else {
-                    // Si no existe, usar CLA0 como placeholder
-                    claSelect.append('<option value="CLA0">Territorio Nacional</option>');
-                }
+                // Siempre incluir Territorio Nacional para todos
+                claSelect.append('<option value="CLA0">Territorio Nacional</option>');
                 
                 clas.sort((a, b) => {
                     var numA = parseInt(a.id.replace(/\D/g, ''));
@@ -347,10 +421,17 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 }).forEach(cla => {
                     claSelect.append(`<option value="${cla.id}">${cla.name || cla.id}</option>`);
                 });
+                
+                console.log('CLAs cargados:', clas.length);
+            }.bind(this)).catch(function(error) {
+                console.error('Error cargando CLAs:', error);
+                this.$el.find('#cla-select').html('<option value="">Error al cargar</option>');
             }.bind(this));
         },
         
         cargarCLAsUsuario: function () {
+            console.log('Cargando CLAs para usuario no Casa Nacional...');
+            
             var claSelect = this.$el.find('#cla-select');
             var oficinaSelect = this.$el.find('#oficina-select');
             
@@ -365,41 +446,29 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             
             claSelect.html('<option value="">Seleccione un CLA</option>');
             
-            // Buscar si el usuario tiene un team "Territorio Nacional"
-            var territorioNacionalId = teamsIds.find(id => {
-                var teamName = (this.state.usuario.teamsNames[id] || '').toLowerCase();
-                return teamName === 'territorio nacional';
-            });
+            // TODOS los usuarios pueden ver Territorio Nacional
+            claSelect.append('<option value="CLA0">Territorio Nacional</option>');
             
-            // Solo agregar Territorio Nacional si el usuario es Casa Nacional Y no tiene ya ese team
-            if (this.state.esCasaNacional && !territorioNacionalId) {
-                claSelect.append('<option value="CLA0">Territorio Nacional</option>');
-            } else if (territorioNacionalId) {
-                var teamName = this.state.usuario.teamsNames[territorioNacionalId];
-                claSelect.append(`<option value="${territorioNacionalId}">${teamName}</option>`);
-            }
-            
-            if (claId) {
+            // Si el usuario NO es Casa Nacional, solo puede ver su CLA específico
+            if (!this.state.esCasaNacional && claId) {
                 var teamName = this.state.usuario.teamsNames[claId] || claId;
                 claSelect.append(`<option value="${claId}">${teamName}</option>`);
                 
-                this.state.claSeleccionado = claId;
-                claSelect.val(claId);
-                
-                var oficinaId = teamsIds.find(id => !claPattern.test(id) && id.toLowerCase() !== 'venezuela');
-                if (oficinaId) {
-                    var oficinaName = this.state.usuario.teamsNames[oficinaId] || oficinaId;
-                    oficinaSelect.html(`<option value="${oficinaId}">${oficinaName}</option>`);
-                    oficinaSelect.prop('disabled', false);
-                    this.state.oficinaSeleccionada = oficinaId;
-                    oficinaSelect.val(oficinaId);
-                    
-                    this.cargarUsuariosPorOficina(oficinaId);
-                }
+                console.log('CLA disponible para usuario:', claId);
+            } 
+            // Si el usuario ES Casa Nacional, puede ver todos los CLAs
+            else if (this.state.esCasaNacional) {
+                this.cargarTodosCLAs();
             }
+            
+            // Resetear filtros dependientes
+            oficinaSelect.html('<option value="">Seleccione un CLA primero</option>');
+            oficinaSelect.prop('disabled', true);
         },
         
         cargarOficinasPorCLA: function (claId) {
+            console.log('Cargando oficinas para CLA:', claId);
+            
             var oficinaSelect = this.$el.find('#oficina-select');
             
             Promise.all([
@@ -426,6 +495,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 });
                 
                 oficinaSelect.prop('disabled', false);
+                console.log('Oficinas cargadas:', oficinas.length);
             }.bind(this)).catch(function (error) {
                 console.error('Error cargando oficinas:', error);
                 oficinaSelect.html('<option value="">Error al cargar</option>');
@@ -433,6 +503,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
         
         cargarUsuariosPorOficina: function (oficinaId) {
+            console.log('Cargando usuarios para oficina:', oficinaId);
+            
             var usuarioSelect = this.$el.find('#usuario-select');
             
             this.fetchEncuestasPorOficina(oficinaId).then(function (encuestas) {
@@ -451,29 +523,42 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 });
                 
                 usuarioSelect.prop('disabled', false);
+                console.log('Usuarios cargados:', usuarios.length);
             }.bind(this)).catch(function (error) {
                 console.error('Error cargando usuarios:', error);
                 usuarioSelect.html('<option value="">Error al cargar</option>');
             });
         },
         
-        cargarDatosIniciales: function () {
-            if (this.state.fechaSeleccionada && !this.state.esCasaNacional && this.state.oficinaSeleccionada) {
-                setTimeout(function() {
-                    this.cargarDatos();
-                }.bind(this), 500);
-            }
-        },
-        
         cargarDatos: function () {
-            console.log('Cargando datos con filtros:', {
+            // Si ya se están cargando datos, salir
+            if (this.state.cargandoDatos) {
+                console.log('Ya se están cargando datos, ignorando llamada...');
+                return;
+            }
+            
+            console.log('=== INICIANDO CARGA DE DATOS ===');
+            console.log('Filtros activos:', {
                 fecha: this.state.fechaSeleccionada,
                 cla: this.state.claSeleccionado,
                 oficina: this.state.oficinaSeleccionada,
                 usuario: this.state.usuarioSeleccionado
             });
             
+            // Validar que haya al menos un filtro básico
+            if (!this.state.fechaSeleccionada) {
+                console.log('No hay fecha seleccionada, mostrando "no data"');
+                this.mostrarNoData();
+                return;
+            }
+            
+            this.state.cargandoDatos = true;
             this.mostrarLoading(true);
+            
+            // Limpiar datos anteriores
+            this.state.encuestas = [];
+            this.state.respuestas = [];
+            this.state.preguntas = [];
             
             Promise.all([
                 this.fetchCategorias(),
@@ -483,11 +568,13 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.state.encuestas = encuestas;
                 
                 console.log('Categorías cargadas:', this.state.categorias.length);
-                console.log('Encuestas cargadas:', this.state.encuestas.length);
+                console.log('Encuestas FILTRADAS cargadas:', this.state.encuestas.length);
                 
                 if (this.state.encuestas.length === 0) {
+                    console.log('No hay encuestas con los filtros aplicados');
                     this.mostrarNoData();
-                    return Promise.resolve(null); // Retornar promise para que no falle el siguiente .then
+                    this.state.cargandoDatos = false;
+                    return Promise.resolve(null);
                 }
                 
                 return Promise.all([
@@ -496,12 +583,18 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 ]);
             }.bind(this)).then(function (resultado) {
                 // Si no hay resultado (no hay encuestas), salir
-                if (!resultado) return;
+                if (!resultado) {
+                    this.state.cargandoDatos = false;
+                    return;
+                }
                 
                 var preguntas = resultado[0];
                 var respuestas = resultado[1];
                 
-                if (!preguntas) return;
+                if (!preguntas) {
+                    this.state.cargandoDatos = false;
+                    return;
+                }
                 
                 this.state.preguntas = preguntas.filter(p => {
                     var catNombre = p.categoriaLiderazgoName || '';
@@ -510,16 +603,23 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.state.respuestas = respuestas;
                 
                 console.log('Preguntas cargadas:', this.state.preguntas.length);
-                console.log('Respuestas cargadas:', this.state.respuestas.length);
+                console.log('Respuestas FILTRADAS cargadas:', this.state.respuestas.length);
                 
                 this.generarEstadisticas();
                 this.generarGraficoPromedios();
                 this.generarGraficos();
                 this.mostrarContenido();
+                
+                this.state.datosCargados = true;
+                this.state.cargandoDatos = false;
+                
+                console.log('=== CARGA DE DATOS COMPLETADA ===');
+                
             }.bind(this)).catch(function (error) {
                 console.error('Error cargando datos:', error);
                 Espo.Ui.error('Error al cargar los datos');
                 this.mostrarNoData();
+                this.state.cargandoDatos = false;
             }.bind(this));
         },
         
@@ -708,12 +808,19 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         
         fetchEncuestasFiltradas: function () {
             return new Promise(function (resolve, reject) {
+                console.log('Buscando encuestas con filtros:', {
+                    fecha: this.state.fechaSeleccionada,
+                    cla: this.state.claSeleccionado,
+                    oficina: this.state.oficinaSeleccionada,
+                    usuario: this.state.usuarioSeleccionado
+                });
+                
                 var maxSize = 200;
                 var allEncuestas = [];
                 
                 var whereConditions = [];
                 
-                // NUEVO: Filtro por fecha/año
+                // Filtro por fecha/año (OBLIGATORIO)
                 if (this.state.fechaSeleccionada) {
                     var año = parseInt(this.state.fechaSeleccionada);
                     var fechaInicio = año + '-01-01';
@@ -726,6 +833,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     });
                 }
                 
+                // Filtro por CLA (solo si no es Territorio Nacional)
                 if (this.state.claSeleccionado && this.state.claSeleccionado !== 'CLA0') {
                     whereConditions.push({
                         type: 'equals',
@@ -734,7 +842,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     });
                 }
                 
-                if (this.state.oficinaSeleccionada) {
+                // Filtro por oficina (solo si hay CLA seleccionado y no es Territorio Nacional)
+                if (this.state.oficinaSeleccionada && this.state.claSeleccionado && this.state.claSeleccionado !== 'CLA0') {
                     whereConditions.push({
                         type: 'equals',
                         attribute: 'oficinaTeamId',
@@ -742,6 +851,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     });
                 }
                 
+                // Filtro por usuario (si está seleccionado)
                 if (this.state.usuarioSeleccionado) {
                     whereConditions.push({
                         type: 'equals',
@@ -749,6 +859,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         value: this.state.usuarioSeleccionado
                     });
                 }
+                
+                console.log('Condiciones WHERE para encuestas:', whereConditions);
                 
                 var fetchPage = function (offset) {
                     this.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
@@ -758,15 +870,21 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         
                         collection.fetch().then(function () {
                             var models = collection.models || [];
-                            allEncuestas = allEncuestas.concat(models.map(m => ({
+                            var encuestasFiltradas = models.map(m => ({
                                 id: m.id,
                                 fecha: m.get('fecha'),
-                                usuarioEvaluadoId: m.get('usuarioEvaluadoId')
-                            })));
+                                usuarioEvaluadoId: m.get('usuarioEvaluadoId'),
+                                claTeamId: m.get('claTeamId'),
+                                oficinaTeamId: m.get('oficinaTeamId')
+                            }));
+                            
+                            allEncuestas = allEncuestas.concat(encuestasFiltradas);
                             
                             if (models.length === maxSize && allEncuestas.length < collection.total) {
                                 fetchPage(offset + maxSize);
                             } else {
+                                console.log('Encuestas encontradas con filtros:', allEncuestas.length);
+                                console.log('Detalle de encuestas:', allEncuestas);
                                 resolve(allEncuestas);
                             }
                         }).catch(reject);
@@ -779,11 +897,20 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         
         fetchRespuestasPorEncuestas: function (encuestaIds) {
             return new Promise(function (resolve, reject) {
+                console.log('Buscando respuestas para', encuestaIds.length, 'encuestas');
+                
+                if (encuestaIds.length === 0) {
+                    console.log('No hay encuestas para buscar respuestas');
+                    resolve([]);
+                    return;
+                }
+                
                 var maxSize = 200;
                 var allRespuestas = [];
                 
                 var processBatch = function (batchIndex) {
                     if (batchIndex >= Math.ceil(encuestaIds.length / 50)) {
+                        console.log('Total respuestas encontradas:', allRespuestas.length);
                         resolve(allRespuestas);
                         return;
                     }
@@ -889,7 +1016,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 
                 // Calcular promedio como porcentaje (escala 1-4 convertida a 0-100%)
                 var suma = parseInt(conteo['4']) * 4 + parseInt(conteo['3']) * 3 + 
-                           parseInt(conteo['2']) * 2 + parseInt(conteo['1']) * 1;
+                        parseInt(conteo['2']) * 2 + parseInt(conteo['1']) * 1;
                 var promedio = (suma / total) / 4 * 100; // Convertir a porcentaje
                 
                 labels.push(categoria.name);
@@ -921,13 +1048,22 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                             return '#333333';
                         }),
                         borderColor: '#fff',
-                        borderWidth: 2
+                        borderWidth: 2,
+                        barThickness: 25
                     }]
                 },
                 options: {
                     indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            left: 10,
+                            right: 50,
+                            top: 10,
+                            bottom: 10
+                        }
+                    },
                     scales: {
                         x: {
                             beginAtZero: true,
@@ -936,6 +1072,22 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                 callback: function(value) {
                                     return value + '%';
                                 }
+                            },
+                            grid: {
+                                display: true
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                autoSkip: false,
+                                maxRotation: 0,
+                                minRotation: 0,
+                                font: {
+                                    size: 12
+                                }
+                            },
+                            grid: {
+                                display: false
                             }
                         }
                     },
@@ -955,11 +1107,24 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         if (elements && elements.length > 0) {
                             var index = elements[0].index;
                             var categoriaNombre = labels[index];
-                            this.navegarACategoriaDetalle(categoriaNombre);
+                            this.navegarACategoria(categoriaNombre);
                         }
                     }.bind(this)
                 }
             });
+            
+            console.log('Gráfico de promedios generado con datos:', promediosPorCategoria);
+        },
+        
+        obtenerTextoCategoria: function(nombreCategoria) {
+            var textosCategorias = {
+                'Comunicación': 'La comunicación efectiva es fundamental para el liderazgo. Este análisis muestra cómo se percibe la comunicación en el equipo.',
+                'Toma de Decisiones': 'La capacidad de tomar decisiones acertadas es clave para el éxito del liderazgo. Revise los resultados obtenidos.',
+                'Trabajo en Equipo': 'El trabajo colaborativo fortalece los resultados del equipo. Analice los indicadores de colaboración.',
+                'Planificación': 'Una buena planificación es esencial para alcanzar los objetivos. Evalúe los resultados de esta categoría.'
+            };
+            
+            return textosCategorias[nombreCategoria] || '';
         },
         
         generarGraficos: function () {
@@ -996,11 +1161,21 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 
                 var canvasId = 'chart-' + categoria.id;
                 var categoriaNombre = categoria.name;
+                var textoCategoria = this.obtenerTextoCategoria(categoriaNombre);
+                var tieneTooltip = textoCategoria !== '';
                 
-                // USAR DATA ATTRIBUTES PARA EVENT DELEGATION
                 var cardHtml = `
                     <div class="chart-card" data-categoria-nombre="${this.escapeHtml(categoriaNombre)}" style="cursor: pointer;">
-                        <h3>${categoriaNombre}</h3>
+                        <div class="chart-header">
+                            <h3>${categoriaNombre}</h3>
+                            ${tieneTooltip ? `
+                            <div class="info-icon-container">
+                                <i class="fas fa-info-circle info-icon" 
+                                   data-toggle="tooltip" 
+                                   title="${this.escapeHtml(textoCategoria)}"></i>
+                            </div>
+                            ` : ''}
+                        </div>
                         <div class="chart-wrapper">
                             <canvas id="${canvasId}"></canvas>
                         </div>
@@ -1058,28 +1233,52 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 var categoriaNombre = $card.data('categoria-nombre');
                 
                 if (categoriaNombre) {
-                    this.navegarACategoriaDetalle(categoriaNombre);
+                    this.navegarACategoria(categoriaNombre);
                 }
             }.bind(this));
+
+            // Inicializar tooltips después de renderizar
+            setTimeout(function() {
+                this.$el.find('[data-toggle="tooltip"]').tooltip({
+                    placement: 'top',
+                    trigger: 'hover'
+                });
+            }.bind(this), 200);
         },
         
-        navegarACategoriaDetalle: function(categoriaNombre) {
-            console.log('Navegando a categoría:', categoriaNombre);
+        navegarACategoria: function(categoriaNombre) {
+            console.log('🎯 === INICIANDO NAVEGACIÓN A CATEGORÍA ===');
+            console.log('Categoría seleccionada:', categoriaNombre);
             
-            // Crear parámetros compuestos
+            // Hacer encoding de la categoría para la URL
+            var categoriaEncoded = encodeURIComponent(categoriaNombre);
+            console.log('Categoría encoded:', categoriaEncoded);
+            
+            // Crear parámetros compuestos INCLUYENDO la categoría (encoded)
             var filtrosParam = [
+                categoriaEncoded,
                 this.state.fechaSeleccionada || 'null',
                 this.state.claSeleccionado || 'null',
                 this.state.oficinaSeleccionada || 'null', 
                 this.state.usuarioSeleccionado || 'null'
             ].join('-');
             
-            var categoriaEncoded = encodeURIComponent(categoriaNombre);
+            console.log('Parámetros compuestos:', filtrosParam);
             
-            console.log('Parámetros enviados:', filtrosParam);
+            var rutaCompleta = '#Liderazgo/categoria/' + filtrosParam;
+            console.log('Ruta completa:', rutaCompleta);
             
-            // Usar el router con parámetros compuestos
-            this.getRouter().navigate('#Liderazgo/categoria/' + categoriaEncoded + '/' + filtrosParam, {trigger: true});
+            // Verificar que el router esté disponible
+            var router = this.getRouter();
+            console.log('Router disponible:', !!router);
+            
+            if (router) {
+                console.log('🔵 Disparando navegación...');
+                router.navigate(rutaCompleta, {trigger: true});
+                console.log('✅ Navegación disparada');
+            } else {
+                console.error('❌ Router no disponible');
+            }
         },
         
         mostrarLoading: function (show) {

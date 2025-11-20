@@ -214,13 +214,14 @@
     row-gap: 35px; 
 }
 
+/* TARJETAS DE GRÁFICOS MÁS ALTAS */
 .chart-card {
     background: white;
     border-radius: 8px;
-    padding: 20px;
+    padding: 25px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     transition: transform 0.3s, box-shadow 0.3s;
-    min-height: 350px; 
+    min-height: 450px; /* AUMENTADO para más altura */
 }
 
 .chart-card:hover {
@@ -228,36 +229,50 @@
     box-shadow: 0 4px 15px rgba(0,0,0,0.12);
 }
 
-/* Estilos para el link dentro de la card */
-.chart-card-link {
-    text-decoration: none;
-    color: inherit;
-    display: block;
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
 }
 
-.chart-card-link:hover {
-    text-decoration: none;
-    color: inherit;
-}
-
-.chart-card h3 {
+.chart-header h3 {
     color: #333;
-    margin: 0 0 15px 0;
+    margin: 0;
     font-size: 16px;
     padding-bottom: 10px;
     border-bottom: 3px solid #B8A279;
+    flex: 1;
 }
 
+.info-icon-container {
+    margin-left: 10px;
+}
+
+.info-icon {
+    color: #B8A279;
+    cursor: help;
+    font-size: 16px;
+    transition: color 0.3s;
+}
+
+.info-icon:hover {
+    color: #6B6F47;
+}
+
+/* CONTENEDOR DE GRÁFICOS MÁS ALTO - SOLO UNA CONFIGURACIÓN */
 .chart-wrapper {
     position: relative;
-    height: 180px;
-    max-height: 300px;
+    height: 350px; /* AUMENTADO para más altura */
+    max-height: 350px;
+    width: 100%;
+    padding: 15px; /* Más espacio alrededor */
 }
 
 .promedios-chart-card {
     background: white;
     border-radius: 8px;
-    padding: 20px;
+    padding: 25px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     margin-bottom: 25px;
 }
@@ -272,8 +287,16 @@
 
 .promedios-chart-wrapper {
     position: relative;
-    height: 300px;
-    max-height: 350px;
+    height: 400px; /* AUMENTADO para más altura */
+    max-height: 400px;
+    width: 100%;
+    min-width: 500px;
+}
+
+/* Asegurar que el canvas de donas tenga espacio suficiente */
+.chart-wrapper canvas {
+    max-width: 100%;
+    max-height: 100%;
 }
 
 .sugerencias-card {
@@ -328,5 +351,24 @@
     padding: 15px;
     margin: 15px 0;
     border-radius: 4px;
+}
+
+/* Mejorar el tooltip */
+.tooltip {
+    font-size: 13px;
+    max-width: 300px;
+}
+
+.tooltip-inner {
+    background: #333;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 6px;
+    text-align: left;
+}
+
+/* Estilos mejorados para los textos en gráficos */
+.chartjs-render-monitor {
+    position: relative;
 }
 </style>

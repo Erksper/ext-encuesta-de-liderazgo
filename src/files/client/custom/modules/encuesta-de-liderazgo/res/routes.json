@@ -14,10 +14,10 @@
         }
     },
     {
-        "route": "Liderazgo/categoria/:categoria",
+        "route": "Liderazgo/categoria/:filtros",
         "params": {
             "controller": "Liderazgo",
             "action": "categoria"
         }
     }
-]   
+]
