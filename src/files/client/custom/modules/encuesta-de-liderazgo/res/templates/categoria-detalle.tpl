@@ -1,9 +1,8 @@
 <div class="reporte-categoria-container">
     <div class="reporte-header">
-        <!-- Logo C21 completamente eliminado -->
         <div class="header-content">
             <div class="header-title">
-                <h2>{{categoriaNombre}}</h2>
+                <h2 id="categoria-nombre-titulo">Cargando...</h2>
                 <p>Análisis detallado por pregunta</p>
             </div>
             <!-- Texto específico por categoría -->
@@ -47,7 +46,6 @@
                     </div>
                 </div>
             </div>
-
 
             <!-- Tabla de preguntas -->
             <div class="preguntas-table-card">
@@ -102,7 +100,8 @@
 }
 
 .header-title {
-    flex: 1;
+    flex: 0 0 30%; 
+    min-width: 0; 
 }
 
 .header-title h2 {
@@ -116,7 +115,7 @@
 }
 
 .texto-categoria-especifica {
-    flex: 0 0 45%;
+    flex: 0 0 65%;
     margin-top: 0;
     padding: 15px;
     background: rgba(255,255,255,0.15);
@@ -139,6 +138,11 @@
         gap: 20px;
     }
     
+    .texto-categoria-especifica {
+        flex: 0 0 auto;
+        width: 100%;
+    }
+
     .texto-categoria-especifica {
         flex: 0 0 auto;
         width: 100%;

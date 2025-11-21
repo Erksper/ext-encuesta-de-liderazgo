@@ -4,12 +4,11 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         
         template: 'encuesta-de-liderazgo:evaluacion-general',
         
-        // Configuración de colores para los gráficos
         COLORES: {
-            '4': '#A0A57E',  // Siempre
-            '3': '#6B6F47',  // Casi Siempre
-            '2': '#D3D3D3',  // Pocas Veces
-            '1': '#333333'   // Nunca
+            '4': '#A0A57E',
+            '3': '#6B6F47',
+            '2': '#D3D3D3',
+            '1': '#333333'
         },
         
         LABELS: {
@@ -42,37 +41,27 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             this.wait(true);
             this.cargarUsuarioActual();
             
-            // Cargar Chart.js desde archivo local si no está cargado
             if (typeof Chart === 'undefined') {
-                console.log('Cargando Chart.js desde archivo local...');
-                
                 var script = document.createElement('script');
                 script.src = 'client/custom/modules/encuesta-de-liderazgo/lib/chart.min.js';
                 script.onload = function() {
-                    console.log('Chart.js cargado exitosamente');
                     this.registrarPluginsChart();
                     this.verificarCargaCompleta();
                 }.bind(this);
                 script.onerror = function() {
-                    console.error('Error al cargar Chart.js');
                     Espo.Ui.error('Error al cargar la librería de gráficos');
                     this.wait(false);
                 }.bind(this);
                 document.head.appendChild(script);
             } else {
-                // Si Chart.js ya está cargado, registrar plugins inmediatamente
                 this.registrarPluginsChart();
                 this.verificarCargaCompleta();
             }
         },
 
-        // NUEVO MÉTODO: Registrar plugins de Chart.js
         registrarPluginsChart: function() {
             if (typeof Chart === 'undefined') return;
             
-            console.log('Registrando plugins personalizados...');
-            
-            // Plugin para mostrar porcentajes en DONAS (FUERA del borde)
             const doughnutLabelsPlugin = {
                 id: 'doughnutLabels',
                 afterDraw: function(chart) {
@@ -84,28 +73,20 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                             var meta = chart.getDatasetMeta(i);
                             if (!meta.hidden) {
                                 meta.data.forEach(function(element, index) {
-                                    // Obtener posición del centro del segmento
+                                    var value = dataset.data[index];
                                     var model = element;
                                     var startAngle = model.startAngle;
                                     var endAngle = model.endAngle;
                                     var angle = startAngle + (endAngle - startAngle) / 2;
-                                    
-                                    // Calcular posición FUERA de la dona (1.15 veces el radio exterior)
-                                    var radius = model.outerRadius * 1.15;
+                                    var radius = model.outerRadius * 1.35;
                                     var x = model.x + Math.cos(angle) * radius;
                                     var y = model.y + Math.sin(angle) * radius;
-                                    
-                                    // Calcular porcentaje
-                                    var value = dataset.data[index];
                                     var percentage = total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%';
                                     
-                                    // Configurar estilo - COLOR OSCURO
                                     ctx.fillStyle = '#333333';
-                                    ctx.font = 'bold 11px Arial';
+                                    ctx.font = 'bold 12px Arial';
                                     ctx.textAlign = 'center';
                                     ctx.textBaseline = 'middle';
-                                    
-                                    // Dibujar porcentaje
                                     ctx.fillText(percentage, x, y);
                                 });
                             }
@@ -114,7 +95,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 }
             };
 
-            // Plugin para mostrar porcentajes en BARRAS (CORREGIDO)
             const barLabelsPlugin = {
                 id: 'barLabels',
                 afterDatasetsDraw: function(chart) {
@@ -125,41 +105,26 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                             var meta = chart.getDatasetMeta(datasetIndex);
                             if (!meta.hidden) {
                                 meta.data.forEach(function(element, index) {
-                                    // Obtener posición y valor
                                     var value = dataset.data[index];
                                     
-                                    // Solo mostrar si el valor es mayor a 0
                                     if (value > 0) {
-                                        var x = element.x;
-                                        var y = element.y;
-                                        var width = element.width;
-                                        var height = element.height;
-                                        
-                                        // Para barras HORIZONTALES (como el de promedios)
                                         if (chart.options.indexAxis === 'y') {
-                                            // Posicionar en el centro de la barra horizontal
-                                            var textX = x + width / 2;
-                                            var textY = y;
+                                            var textX = element.x + element.width + 8;
+                                            var textY = element.y;
                                             
-                                            // Configurar estilo para mejor legibilidad
-                                            ctx.fillStyle = '#FFFFFF';
-                                            ctx.font = 'bold 12px Arial';
-                                            ctx.textAlign = 'center';
+                                            ctx.fillStyle = '#333333';
+                                            ctx.font = 'bold 13px Arial';
+                                            ctx.textAlign = 'left';
                                             ctx.textBaseline = 'middle';
-                                            
-                                            // Dibujar texto del porcentaje
                                             ctx.fillText(value.toFixed(1) + '%', textX, textY);
-                                        } 
-                                        // Para barras VERTICALES
-                                        else {
-                                            var textX = x;
-                                            var textY = y - 15; // Posicionar arriba de la barra
+                                        } else {
+                                            var textX = element.x;
+                                            var textY = element.y - 5;
                                             
                                             ctx.fillStyle = '#333333';
                                             ctx.font = 'bold 12px Arial';
                                             ctx.textAlign = 'center';
                                             ctx.textBaseline = 'bottom';
-                                            
                                             ctx.fillText(value.toFixed(1) + '%', textX, textY);
                                         }
                                     }
@@ -170,9 +135,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 }
             };
 
-            // Registrar los plugins
             Chart.register(doughnutLabelsPlugin, barLabelsPlugin);
-            console.log('Plugins registrados correctamente');
         },
         
         data: function () {
@@ -182,12 +145,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
         
         afterRender: function () {
-            console.log('afterRender ejecutado');
-            
-            // Mostrar "No hay datos" inmediatamente
             this.mostrarNoData();
             
-            // Dar tiempo para que el DOM se construya
             setTimeout(function() {
                 this.inicializarFiltros();
                 this.cargarAniosDisponibles();
@@ -195,8 +154,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
 
         cargarAniosDisponibles: function () {
-            console.log('Cargando años disponibles...');
-            
             this.fetchAniosDisponibles().then(function(anios) {
                 var fechaSelect = this.$el.find('#fecha-select');
                 fechaSelect.html('<option value="">Todos los años</option>');
@@ -204,20 +161,15 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 anios.sort((a, b) => b - a).forEach(function(anio) {
                     fechaSelect.append(`<option value="${anio}">${anio}</option>`);
                 });
-                
-                console.log('Años cargados:', anios);
-                
             }.bind(this)).catch(function(error) {
-                console.error('Error cargando años:', error);
                 this.$el.find('#fecha-select').html('<option value="">Error al cargar</option>');
             }.bind(this));
         },
 
-        // NUEVA FUNCIÓN: Obtener años disponibles de las encuestas
         fetchAniosDisponibles: function () {
             return new Promise(function (resolve, reject) {
                 this.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
-                    collection.maxSize = 1000; // Suficiente para obtener todas las fechas
+                    collection.maxSize = 1000;
                     
                     collection.fetch().then(function () {
                         var anios = new Set();
@@ -231,7 +183,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                             }
                         });
                         
-                        // Si no hay fechas, usar el año actual
                         if (anios.size === 0) {
                             anios.add(new Date().getFullYear());
                         }
@@ -255,13 +206,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     this.state.usuario.teamsIds = userModel.get('teamsIds') || [];
                     this.state.usuario.teamsNames = userModel.get('teamsNames') || {};
                     
-                    console.log('Usuario cargado:', {
-                        nombre: user.name,
-                        esCasaNacional: this.state.esCasaNacional,
-                        teams: this.state.usuario.teamsIds
-                    });
-                    
-                    // Esperar a que tanto Chart.js como el usuario estén cargados
                     this.verificarCargaCompleta();
                     
                 }.bind(this));
@@ -269,16 +213,12 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
         
         verificarCargaCompleta: function() {
-            // Verificar si Chart.js está cargado y el usuario está listo
             var chartCargado = typeof Chart !== 'undefined';
             var usuarioCargado = this.state.usuario && this.state.usuario.teamsIds !== undefined;
             
             if (chartCargado && usuarioCargado) {
-                console.log('Todo listo para inicializar');
                 this.wait(false);
             } else {
-                console.log('Esperando carga completa...', { chartCargado, usuarioCargado });
-                // Volver a verificar en 100ms
                 setTimeout(function() {
                     this.verificarCargaCompleta();
                 }.bind(this), 100);
@@ -286,37 +226,24 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
         
         inicializarFiltros: function () {
-            console.log('Inicializando filtros...');
-            
             var fechaSelect = this.$el.find('#fecha-select');
             var claSelect = this.$el.find('#cla-select');
             var oficinaSelect = this.$el.find('#oficina-select');
             var usuarioSelect = this.$el.find('#usuario-select');
             
-            console.log('Inicializando filtros, elementos encontrados:', {
-                fecha: fechaSelect.length,
-                cla: claSelect.length,
-                oficina: oficinaSelect.length,
-                usuario: usuarioSelect.length
-            });
-            
-            // Evento para el filtro de fecha
             fechaSelect.on('change', function (e) {
                 var valor = $(e.currentTarget).val();
-                console.log('Fecha seleccionada:', valor);
                 
                 this.state.fechaSeleccionada = valor;
                 this.state.claSeleccionado = null;
                 this.state.oficinaSeleccionada = null;
                 this.state.usuarioSeleccionado = null;
                 
-                // Resetear los demás filtros
                 claSelect.prop('disabled', !this.state.fechaSeleccionada);
                 oficinaSelect.prop('disabled', true);
                 usuarioSelect.prop('disabled', true);
                 
                 if (this.state.fechaSeleccionada) {
-                    // Cargar CLAs basados en la fecha seleccionada
                     claSelect.html('<option value="">Cargando CLAs...</option>');
                     if (this.state.esCasaNacional) {
                         this.cargarTodosCLAs();
@@ -331,10 +258,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 }
             }.bind(this));
             
-            // Evento para filtro CLA
             claSelect.on('change', function (e) {
                 var valor = $(e.currentTarget).val();
-                console.log('CLA seleccionado:', valor);
                 
                 this.state.claSeleccionado = valor;
                 this.state.oficinaSeleccionada = null;
@@ -345,14 +270,11 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 usuarioSelect.prop('disabled', true);
                 
                 if (this.state.claSeleccionado === 'CLA0') {
-                    // Para Territorio Nacional, no hay oficinas
                     oficinaSelect.html('<option value="">No disponible para Territorio Nacional</option>');
                     oficinaSelect.prop('disabled', true);
-                    // Cargar datos inmediatamente para Territorio Nacional
                     this.cargarDatos();
                 } else if (this.state.claSeleccionado) {
                     this.cargarOficinasPorCLA(this.state.claSeleccionado);
-                    // CARGAR DATOS AL SELECCIONAR CLA (NUEVO)
                     this.cargarDatos();
                 } else {
                     oficinaSelect.prop('disabled', true);
@@ -361,34 +283,27 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 }
             }.bind(this));
             
-            // Evento para filtro Oficina
             oficinaSelect.on('change', function (e) {
                 var valor = $(e.currentTarget).val();
-                console.log('Oficina seleccionada:', valor);
                 
                 this.state.oficinaSeleccionada = valor;
                 this.state.usuarioSeleccionado = null;
                 
                 if (this.state.oficinaSeleccionada) {
                     this.cargarUsuariosPorOficina(this.state.oficinaSeleccionada);
-                    // Cargar datos cuando se selecciona oficina
                     this.cargarDatos();
                 } else {
                     usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
                     usuarioSelect.prop('disabled', true);
-                    // Si no hay oficina seleccionada, cargar datos del CLA
                     this.cargarDatos();
                 }
             }.bind(this));
             
-            // Evento para filtro Usuario
             usuarioSelect.on('change', function (e) {
                 var valor = $(e.currentTarget).val();
-                console.log('Usuario seleccionado:', valor);
                 
                 this.state.usuarioSeleccionado = valor;
                 
-                // Mostrar/ocultar sección de sugerencias
                 if (this.state.usuarioSeleccionado) {
                     this.$el.find('#sugerencias-card').show();
                     this.cargarSugerencias();
@@ -396,14 +311,11 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     this.$el.find('#sugerencias-card').hide();
                 }
                 
-                // Recargar datos con el filtro de usuario
                 this.cargarDatos();
             }.bind(this));
         },
         
         cargarTodosCLAs: function () {
-            console.log('Cargando todos los CLAs para Casa Nacional...');
-            
             this.fetchAllTeams().then(function (teams) {
                 var claPattern = /^CLA\d+$/i;
                 var clas = teams.filter(t => claPattern.test(t.id));
@@ -411,10 +323,11 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 var claSelect = this.$el.find('#cla-select');
                 claSelect.html('<option value="">Seleccione un CLA</option>');
                 
-                // Siempre incluir Territorio Nacional para todos
+                var clasFiltrados = clas.filter(cla => cla.id !== 'CLA0');
+                
                 claSelect.append('<option value="CLA0">Territorio Nacional</option>');
                 
-                clas.sort((a, b) => {
+                clasFiltrados.sort((a, b) => {
                     var numA = parseInt(a.id.replace(/\D/g, ''));
                     var numB = parseInt(b.id.replace(/\D/g, ''));
                     return numA - numB;
@@ -422,16 +335,12 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     claSelect.append(`<option value="${cla.id}">${cla.name || cla.id}</option>`);
                 });
                 
-                console.log('CLAs cargados:', clas.length);
             }.bind(this)).catch(function(error) {
-                console.error('Error cargando CLAs:', error);
                 this.$el.find('#cla-select').html('<option value="">Error al cargar</option>');
             }.bind(this));
         },
         
         cargarCLAsUsuario: function () {
-            console.log('Cargando CLAs para usuario no Casa Nacional...');
-            
             var claSelect = this.$el.find('#cla-select');
             var oficinaSelect = this.$el.find('#oficina-select');
             
@@ -446,29 +355,20 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             
             claSelect.html('<option value="">Seleccione un CLA</option>');
             
-            // TODOS los usuarios pueden ver Territorio Nacional
             claSelect.append('<option value="CLA0">Territorio Nacional</option>');
             
-            // Si el usuario NO es Casa Nacional, solo puede ver su CLA específico
             if (!this.state.esCasaNacional && claId) {
                 var teamName = this.state.usuario.teamsNames[claId] || claId;
                 claSelect.append(`<option value="${claId}">${teamName}</option>`);
-                
-                console.log('CLA disponible para usuario:', claId);
-            } 
-            // Si el usuario ES Casa Nacional, puede ver todos los CLAs
-            else if (this.state.esCasaNacional) {
+            } else if (this.state.esCasaNacional) {
                 this.cargarTodosCLAs();
             }
             
-            // Resetear filtros dependientes
             oficinaSelect.html('<option value="">Seleccione un CLA primero</option>');
             oficinaSelect.prop('disabled', true);
         },
         
         cargarOficinasPorCLA: function (claId) {
-            console.log('Cargando oficinas para CLA:', claId);
-            
             var oficinaSelect = this.$el.find('#oficina-select');
             
             Promise.all([
@@ -495,16 +395,12 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 });
                 
                 oficinaSelect.prop('disabled', false);
-                console.log('Oficinas cargadas:', oficinas.length);
             }.bind(this)).catch(function (error) {
-                console.error('Error cargando oficinas:', error);
                 oficinaSelect.html('<option value="">Error al cargar</option>');
             });
         },
         
         cargarUsuariosPorOficina: function (oficinaId) {
-            console.log('Cargando usuarios para oficina:', oficinaId);
-            
             var usuarioSelect = this.$el.find('#usuario-select');
             
             this.fetchEncuestasPorOficina(oficinaId).then(function (encuestas) {
@@ -523,31 +419,17 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 });
                 
                 usuarioSelect.prop('disabled', false);
-                console.log('Usuarios cargados:', usuarios.length);
             }.bind(this)).catch(function (error) {
-                console.error('Error cargando usuarios:', error);
                 usuarioSelect.html('<option value="">Error al cargar</option>');
             });
         },
         
         cargarDatos: function () {
-            // Si ya se están cargando datos, salir
             if (this.state.cargandoDatos) {
-                console.log('Ya se están cargando datos, ignorando llamada...');
                 return;
             }
             
-            console.log('=== INICIANDO CARGA DE DATOS ===');
-            console.log('Filtros activos:', {
-                fecha: this.state.fechaSeleccionada,
-                cla: this.state.claSeleccionado,
-                oficina: this.state.oficinaSeleccionada,
-                usuario: this.state.usuarioSeleccionado
-            });
-            
-            // Validar que haya al menos un filtro básico
             if (!this.state.fechaSeleccionada) {
-                console.log('No hay fecha seleccionada, mostrando "no data"');
                 this.mostrarNoData();
                 return;
             }
@@ -555,7 +437,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             this.state.cargandoDatos = true;
             this.mostrarLoading(true);
             
-            // Limpiar datos anteriores
             this.state.encuestas = [];
             this.state.respuestas = [];
             this.state.preguntas = [];
@@ -567,11 +448,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.state.categorias = categorias.filter(c => c.name.toLowerCase() !== 'general');
                 this.state.encuestas = encuestas;
                 
-                console.log('Categorías cargadas:', this.state.categorias.length);
-                console.log('Encuestas FILTRADAS cargadas:', this.state.encuestas.length);
-                
                 if (this.state.encuestas.length === 0) {
-                    console.log('No hay encuestas con los filtros aplicados');
                     this.mostrarNoData();
                     this.state.cargandoDatos = false;
                     return Promise.resolve(null);
@@ -582,7 +459,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     this.fetchRespuestasPorEncuestas(this.state.encuestas.map(e => e.id))
                 ]);
             }.bind(this)).then(function (resultado) {
-                // Si no hay resultado (no hay encuestas), salir
                 if (!resultado) {
                     this.state.cargandoDatos = false;
                     return;
@@ -602,9 +478,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 });
                 this.state.respuestas = respuestas;
                 
-                console.log('Preguntas cargadas:', this.state.preguntas.length);
-                console.log('Respuestas FILTRADAS cargadas:', this.state.respuestas.length);
-                
                 this.generarEstadisticas();
                 this.generarGraficoPromedios();
                 this.generarGraficos();
@@ -613,10 +486,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.state.datosCargados = true;
                 this.state.cargandoDatos = false;
                 
-                console.log('=== CARGA DE DATOS COMPLETADA ===');
-                
             }.bind(this)).catch(function (error) {
-                console.error('Error cargando datos:', error);
                 Espo.Ui.error('Error al cargar los datos');
                 this.mostrarNoData();
                 this.state.cargandoDatos = false;
@@ -808,19 +678,11 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         
         fetchEncuestasFiltradas: function () {
             return new Promise(function (resolve, reject) {
-                console.log('Buscando encuestas con filtros:', {
-                    fecha: this.state.fechaSeleccionada,
-                    cla: this.state.claSeleccionado,
-                    oficina: this.state.oficinaSeleccionada,
-                    usuario: this.state.usuarioSeleccionado
-                });
-                
                 var maxSize = 200;
                 var allEncuestas = [];
                 
                 var whereConditions = [];
                 
-                // Filtro por fecha/año (OBLIGATORIO)
                 if (this.state.fechaSeleccionada) {
                     var año = parseInt(this.state.fechaSeleccionada);
                     var fechaInicio = año + '-01-01';
@@ -833,7 +695,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     });
                 }
                 
-                // Filtro por CLA (solo si no es Territorio Nacional)
                 if (this.state.claSeleccionado && this.state.claSeleccionado !== 'CLA0') {
                     whereConditions.push({
                         type: 'equals',
@@ -842,7 +703,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     });
                 }
                 
-                // Filtro por oficina (solo si hay CLA seleccionado y no es Territorio Nacional)
                 if (this.state.oficinaSeleccionada && this.state.claSeleccionado && this.state.claSeleccionado !== 'CLA0') {
                     whereConditions.push({
                         type: 'equals',
@@ -851,7 +711,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     });
                 }
                 
-                // Filtro por usuario (si está seleccionado)
                 if (this.state.usuarioSeleccionado) {
                     whereConditions.push({
                         type: 'equals',
@@ -859,8 +718,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         value: this.state.usuarioSeleccionado
                     });
                 }
-                
-                console.log('Condiciones WHERE para encuestas:', whereConditions);
                 
                 var fetchPage = function (offset) {
                     this.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
@@ -883,8 +740,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                             if (models.length === maxSize && allEncuestas.length < collection.total) {
                                 fetchPage(offset + maxSize);
                             } else {
-                                console.log('Encuestas encontradas con filtros:', allEncuestas.length);
-                                console.log('Detalle de encuestas:', allEncuestas);
                                 resolve(allEncuestas);
                             }
                         }).catch(reject);
@@ -897,10 +752,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         
         fetchRespuestasPorEncuestas: function (encuestaIds) {
             return new Promise(function (resolve, reject) {
-                console.log('Buscando respuestas para', encuestaIds.length, 'encuestas');
-                
                 if (encuestaIds.length === 0) {
-                    console.log('No hay encuestas para buscar respuestas');
                     resolve([]);
                     return;
                 }
@@ -910,7 +762,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 
                 var processBatch = function (batchIndex) {
                     if (batchIndex >= Math.ceil(encuestaIds.length / 50)) {
-                        console.log('Total respuestas encontradas:', allRespuestas.length);
                         resolve(allRespuestas);
                         return;
                     }
@@ -984,11 +835,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             var promediosContainer = this.$el.find('#promedios-chart-container');
             
             if (!promediosContainer.length) {
-                console.error('Contenedor de promedios no encontrado');
                 return;
             }
             
-            // Calcular promedios por categoría
             var promediosPorCategoria = [];
             var labels = [];
             
@@ -1014,10 +863,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 var total = Object.values(conteo).reduce((a, b) => a + b, 0);
                 if (total === 0) return;
                 
-                // Calcular promedio como porcentaje (escala 1-4 convertida a 0-100%)
                 var suma = parseInt(conteo['4']) * 4 + parseInt(conteo['3']) * 3 + 
                         parseInt(conteo['2']) * 2 + parseInt(conteo['1']) * 1;
-                var promedio = (suma / total) / 4 * 100; // Convertir a porcentaje
+                var promedio = (suma / total) / 4 * 100;
                 
                 labels.push(categoria.name);
                 promediosPorCategoria.push(promedio);
@@ -1026,10 +874,30 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             
             if (labels.length === 0) return;
             
+            // Verificar si el header ya existe
+            var existingHeader = promediosContainer.find('.chart-header');
+            if (existingHeader.length === 0) {
+                // Solo crear el header si no existe
+                var textoPromedios = 'Este gráfico muestra el promedio de desempeño por categoría, calculado como porcentaje basado en las respuestas de las evaluaciones. Cada barra representa el rendimiento promedio de una categoría específica.';
+                
+                var headerHtml = `
+                    <div class="chart-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                        <h3 style="margin: 0;">Promedio por Categoría</h3>
+                        <div class="info-icon-container">
+                            <i class="fas fa-info-circle info-icon" 
+                            data-toggle="tooltip" 
+                            title="${this.escapeHtml(textoPromedios)}"
+                            style="font-size: 16px; color: #6B6F47; cursor: help;"></i>
+                        </div>
+                    </div>
+                `;
+                
+                promediosContainer.prepend(headerHtml);
+            }
+            
             var ctx = document.getElementById('promedios-chart');
             if (!ctx) return;
             
-            // Destruir gráfico anterior si existe
             if (this.state.promediosChart) {
                 this.state.promediosChart.destroy();
             }
@@ -1059,7 +927,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     layout: {
                         padding: {
                             left: 10,
-                            right: 50,
+                            right: 80,
                             top: 10,
                             bottom: 10
                         }
@@ -1071,10 +939,14 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                             ticks: {
                                 callback: function(value) {
                                     return value + '%';
+                                },
+                                font: {
+                                    size: 11
                                 }
                             },
                             grid: {
-                                display: true
+                                display: true,
+                                color: 'rgba(0, 0, 0, 0.05)'
                             }
                         },
                         y: {
@@ -1096,6 +968,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                             display: false
                         },
                         tooltip: {
+                            enabled: true,
                             callbacks: {
                                 label: function(context) {
                                     return 'Promedio: ' + context.parsed.x.toFixed(1) + '%';
@@ -1113,15 +986,28 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 }
             });
             
-            console.log('Gráfico de promedios generado con datos:', promediosPorCategoria);
+            // Solo inicializar tooltips si el header es nuevo
+            if (existingHeader.length === 0) {
+                setTimeout(function() {
+                    this.$el.find('#promedios-chart-container .info-icon').tooltip({
+                        placement: 'auto',
+                        trigger: 'hover',
+                        container: '#promedios-chart-container',
+                        boundary: 'viewport'
+                    });
+                }.bind(this), 200);
+            }
         },
         
         obtenerTextoCategoria: function(nombreCategoria) {
             var textosCategorias = {
-                'Comunicación': 'La comunicación efectiva es fundamental para el liderazgo. Este análisis muestra cómo se percibe la comunicación en el equipo.',
-                'Toma de Decisiones': 'La capacidad de tomar decisiones acertadas es clave para el éxito del liderazgo. Revise los resultados obtenidos.',
-                'Trabajo en Equipo': 'El trabajo colaborativo fortalece los resultados del equipo. Analice los indicadores de colaboración.',
-                'Planificación': 'Una buena planificación es esencial para alcanzar los objetivos. Evalúe los resultados de esta categoría.'
+                'Comunicación': 'Esta competencia se refiere a las habilidades del líder para transmitir su mensaje y que el mismo llegue a sus interlocutores; sea internalizado, practicado y apropiado. Dentro de ésta competencia tenemos indicadores que nos pueden guiar sobre si existe o no en la práctica del líder: escucha activa, uso de preguntas poderosas, feedback generativo, conversaciones productivas, comunicación asertiva, coordinación de acciones, negociación.',
+                'Trabajo en equipo': 'Esta competencia se refiere a la capacidad del líder de formar equipos de trabajo de alto desempeño. Cohesionados, respetando las individualidades pero siempre guiando al bien común. Los indicadores de cumplimiento de ésta competencia son: colaboración y cooperación, persuasión, reconocimiento del otro, relaciones interpersonales, transmisión de conocimientos, delegación, manejo del conflicto.',
+                'Inspiracional y motivacional': 'Esta competencia se basa en la premisa de que un líder no es aquel que te dice qué hacer, sino que te muestra mediante su ejemplo cómo hacerlo. Su conducta es un ejemplo e inspiración para sus colaboradores, así como con su discurso motiva a que las cosas sucedan. Los indicadores de cumplimiento de ésta competencia son: ser fuerza emprendedora, autoestima, seguridad en sí mismo, reconocimiento de méritos, actitud positiva.',
+                'Inteligencia emocional-social': 'Se refiere a las habilidades del líder de actuar conociendo sus emociones y reconociendo las de sus colaboradores; buscando formas efectivas de canalizarlas en beneficio personal y de la organización; también está referida a las interrelaciones con los miembros del equipo de trabajo y clientes, generación de confianza. Los indicadores de cumplimiento de ésta competencia son: generación de buen clima, autoconocimiento, autocontrol, reconocimiento de oportunidades de mejora, adaptabilidad.',
+                'Desempeño': 'Esta competencia se refiere a la gestión integral del líder, su manejo del tiempo, de los reclamos, de los inconvenientes, la estructuración de su tiempo y la planificación estratégica del trabajo (propio y de su equipo), así como la evaluación y seguimiento de trabajo del equipo. Los indicadores de cumplimiento de ésta competencia son: estructuración del trabajo, innovación enmarcada en la organización, evaluación integral y permanente, formación y desarrollo de líderes, uso de herramientas de equipo.',
+                'Visión estratégica organizacional': 'Esta competencia está referida al compromiso del líder para transmitir la cultura de la organización y buscar la mayor integración y alineación de sus seguidores a la misma. Los indicadores de cumplimiento de ésta competencia son: reconocimiento y transmisión de la cultura organizacional, acción estratégica, creación de oportunidades.',
+                'Coherencia del liderazgo': 'Esta competencia busca evaluar la autenticidad y la credibilidad del líder. Se centra en si el líder realmente vive y ejemplifica los principios que predica (trabajo en equipo, inteligencia emocional, visión estratégica) y si todas sus manifestaciones están alineadas con el marco superior de la empresa (misión, visión y valores).'                
             };
             
             return textosCategorias[nombreCategoria] || '';
@@ -1131,7 +1017,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             var chartsContainer = this.$el.find('#charts-grid');
             chartsContainer.empty();
             
-            // Destruir gráficos anteriores
             Object.values(this.state.charts).forEach(chart => {
                 if (chart && chart.destroy) chart.destroy();
             });
@@ -1165,7 +1050,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 var tieneTooltip = textoCategoria !== '';
                 
                 var cardHtml = `
-                    <div class="chart-card" data-categoria-nombre="${this.escapeHtml(categoriaNombre)}" style="cursor: pointer;">
+                    <div class="chart-card" data-categoria-id="${categoria.id}" style="cursor: pointer;">
                         <div class="chart-header">
                             <h3>${categoriaNombre}</h3>
                             ${tieneTooltip ? `
@@ -1202,12 +1087,44 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         options: {
                             responsive: true,
                             maintainAspectRatio: true,
+                            layout: {
+                                padding: {
+                                    top: 40,
+                                    bottom: 10,
+                                    left: 10,
+                                    right: 10
+                                }
+                            },
                             plugins: {
                                 legend: {
                                     position: 'bottom',
                                     labels: {
                                         padding: 15,
-                                        font: { size: 12 }
+                                        font: { 
+                                            size: 11,
+                                            family: 'Arial, sans-serif'
+                                        },
+                                        boxWidth: 12,
+                                        boxHeight: 12,
+                                        usePointStyle: true,
+                                        generateLabels: function(chart) {
+                                            var data = chart.data;
+                                            if (data.labels.length && data.datasets.length) {
+                                                return data.labels.map(function(label, i) {
+                                                    var value = data.datasets[0].data[i];
+                                                    var percentage = ((value / total) * 100).toFixed(1);
+                                                    return {
+                                                        text: label + ' (' + value + ' - ' + percentage + '%)',
+                                                        fillStyle: data.datasets[0].backgroundColor[i],
+                                                        strokeStyle: data.datasets[0].borderColor[i],
+                                                        lineWidth: data.datasets[0].borderWidth[i] || 1,
+                                                        hidden: false,
+                                                        index: i
+                                                    };
+                                                });
+                                            }
+                                            return [];
+                                        }
                                     }
                                 },
                                 tooltip: {
@@ -1220,67 +1137,50 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                         }
                                     }
                                 }
-                            }
+                            },
+                            cutout: '60%'
                         }
                     });
                 }.bind(this), 100);
                 
             }.bind(this));
 
-            // AGREGAR EVENT DELEGATION PARA LOS CLICKS
             this.$el.off('click', '.chart-card').on('click', '.chart-card', function(e) {
                 var $card = $(e.currentTarget);
-                var categoriaNombre = $card.data('categoria-nombre');
+                var categoriaId = $card.data('categoria-id');
                 
-                if (categoriaNombre) {
-                    this.navegarACategoria(categoriaNombre);
+                if (categoriaId) {
+                    this.navegarACategoria(categoriaId);
                 }
             }.bind(this));
 
-            // Inicializar tooltips después de renderizar
             setTimeout(function() {
                 this.$el.find('[data-toggle="tooltip"]').tooltip({
-                    placement: 'top',
-                    trigger: 'hover'
+                    placement: 'auto',
+                    trigger: 'hover',
+                    container: '.chart-card',
+                    boundary: 'viewport'
                 });
             }.bind(this), 200);
         },
-        
-        navegarACategoria: function(categoriaNombre) {
-            console.log('🎯 === INICIANDO NAVEGACIÓN A CATEGORÍA ===');
-            console.log('Categoría seleccionada:', categoriaNombre);
-            
-            // Hacer encoding de la categoría para la URL
-            var categoriaEncoded = encodeURIComponent(categoriaNombre);
-            console.log('Categoría encoded:', categoriaEncoded);
-            
-            // Crear parámetros compuestos INCLUYENDO la categoría (encoded)
+    
+        navegarACategoria: function(categoriaId) {
             var filtrosParam = [
-                categoriaEncoded,
+                categoriaId,
                 this.state.fechaSeleccionada || 'null',
                 this.state.claSeleccionado || 'null',
                 this.state.oficinaSeleccionada || 'null', 
                 this.state.usuarioSeleccionado || 'null'
             ].join('-');
             
-            console.log('Parámetros compuestos:', filtrosParam);
-            
             var rutaCompleta = '#Liderazgo/categoria/' + filtrosParam;
-            console.log('Ruta completa:', rutaCompleta);
             
-            // Verificar que el router esté disponible
             var router = this.getRouter();
-            console.log('Router disponible:', !!router);
-            
             if (router) {
-                console.log('🔵 Disparando navegación...');
                 router.navigate(rutaCompleta, {trigger: true});
-                console.log('✅ Navegación disparada');
-            } else {
-                console.error('❌ Router no disponible');
             }
         },
-        
+                
         mostrarLoading: function (show) {
             if (show) {
                 this.$el.find('#loading-area').show();
@@ -1305,14 +1205,12 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             var sugerenciasContent = this.$el.find('#sugerencias-content');
             sugerenciasContent.html('<p class="loading-sugerencias"><i class="fas fa-spinner fa-spin"></i> Cargando sugerencias...</p>');
             
-            // Buscar preguntas de categoría "General"
             this.fetchPreguntasGenerales().then(function(preguntasGenerales) {
                 if (preguntasGenerales.length === 0) {
                     sugerenciasContent.html('<p style="text-align: center; color: #999;">No hay preguntas de categoría General configuradas</p>');
                     return;
                 }
                 
-                // Buscar respuestas del usuario seleccionado para preguntas generales
                 this.fetchRespuestasGeneralesUsuario(preguntasGenerales).then(function(respuestas) {
                     this.mostrarSugerencias(preguntasGenerales, respuestas);
                 }.bind(this));
@@ -1354,7 +1252,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     return;
                 }
                 
-                // Buscar encuestas del usuario seleccionado
                 var whereConditions = [
                     { type: 'equals', attribute: 'usuarioEvaluadoId', value: this.state.usuarioSeleccionado }
                 ];
@@ -1386,7 +1283,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         var encuestaIds = collection.models.map(m => m.id);
                         var preguntasIds = preguntasGenerales.map(p => p.id);
                         
-                        // Buscar respuestas de tipo texto
                         this.getCollectionFactory().create('EncuestaLiderazgoRespuesta', function(respCollection) {
                             respCollection.where = [
                                 { type: 'in', attribute: 'encuestaLiderazgoId', value: encuestaIds },

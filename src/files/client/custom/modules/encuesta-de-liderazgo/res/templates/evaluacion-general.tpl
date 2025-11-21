@@ -11,7 +11,6 @@
 
     <div class="reporte-filters">
         <div class="filter-row">
-            <!-- NUEVO FILTRO DE FECHA -->
             <div class="filter-group">
                 <label for="fecha-select">📅 Año</label>
                 <select id="fecha-select" class="form-control">
@@ -49,9 +48,7 @@
         <div id="content-area" style="display: none;">
             <div class="stats-summary" id="stats-summary"></div>
             
-            <!-- Gráfico de Promedios por Categoría -->
             <div class="promedios-chart-card" id="promedios-chart-container">
-                <h3>Promedio General por Categoría</h3>
                 <div class="promedios-chart-wrapper">
                     <canvas id="promedios-chart"></canvas>
                 </div>
@@ -59,7 +56,6 @@
             
             <div class="charts-grid" id="charts-grid"></div>
             
-            <!-- Sección de Sugerencias (solo visible cuando hay usuario seleccionado) -->
             <div class="sugerencias-card" id="sugerencias-card" style="display: none;">
                 <h3>Sugerencias y Recomendaciones</h3>
                 <div id="sugerencias-content">
@@ -211,17 +207,17 @@
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 25px; 
     margin-bottom: 40px; 
-    row-gap: 35px; 
+    row-gap: 40px;
 }
 
-/* TARJETAS DE GRÁFICOS MÁS ALTAS */
+/* TARJETAS DE GRÁFICOS MÁS ALTAS - CORREGIDO */
 .chart-card {
     background: white;
     border-radius: 8px;
     padding: 25px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     transition: transform 0.3s, box-shadow 0.3s;
-    min-height: 450px; /* AUMENTADO para más altura */
+    min-height: 320px; /* Aumentado para acomodar gráficos más grandes */
 }
 
 .chart-card:hover {
@@ -234,6 +230,14 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 15px;
+}
+
+.chart-card h3 {
+    color: #333;
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    padding-bottom: 10px;
+    border-bottom: 3px solid #B8A279;
 }
 
 .chart-header h3 {
@@ -260,13 +264,13 @@
     color: #6B6F47;
 }
 
-/* CONTENEDOR DE GRÁFICOS MÁS ALTO - SOLO UNA CONFIGURACIÓN */
+/* CONTENEDOR DE GRÁFICOS DE DONA MÁS ALTO - CORREGIDO */
 .chart-wrapper {
     position: relative;
-    height: 350px; /* AUMENTADO para más altura */
-    max-height: 350px;
+    height: 330px;
+    max-height: 330px;
     width: 100%;
-    padding: 15px; /* Más espacio alrededor */
+    padding: 15px;
 }
 
 .promedios-chart-card {
@@ -287,13 +291,12 @@
 
 .promedios-chart-wrapper {
     position: relative;
-    height: 400px; /* AUMENTADO para más altura */
+    height: 400px;
     max-height: 400px;
     width: 100%;
     min-width: 500px;
 }
 
-/* Asegurar que el canvas de donas tenga espacio suficiente */
 .chart-wrapper canvas {
     max-width: 100%;
     max-height: 100%;
@@ -353,7 +356,6 @@
     border-radius: 4px;
 }
 
-/* Mejorar el tooltip */
 .tooltip {
     font-size: 13px;
     max-width: 300px;
@@ -367,7 +369,6 @@
     text-align: left;
 }
 
-/* Estilos mejorados para los textos en gráficos */
 .chartjs-render-monitor {
     position: relative;
 }
