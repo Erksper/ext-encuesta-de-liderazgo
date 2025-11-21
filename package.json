@@ -1,6 +1,6 @@
 {
   "name": "espocrm-ext-encuesta-de-liderazgo",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "",
   "scripts": {
     "sa": "node build --copy && node build --composer-install && php site/vendor/bin/phpstan",
