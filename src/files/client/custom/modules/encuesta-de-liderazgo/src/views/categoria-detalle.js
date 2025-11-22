@@ -31,6 +31,8 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                 'Visión estratégica organizacional': 'Esta competencia está referida al compromiso del líder para transmitir la cultura de la organización y buscar la mayor integración y alineación de sus seguidores a la misma. Los indicadores de cumplimiento de ésta competencia son: reconocimiento y transmisión de la cultura organizacional, acción estratégica, creación de oportunidades.',
                 'Coherencia del liderazgo': 'Esta competencia busca evaluar la autenticidad y la credibilidad del líder. Se centra en si el líder realmente vive y ejemplifica los principios que predica (trabajo en equipo, inteligencia emocional, visión estratégica) y si todas sus manifestaciones están alineadas con el marco superior de la empresa (misión, visión y valores).'                
             };
+            
+            this.gaugeChart = null;
         },
 
         parseFiltros: function(filtrosString) {
@@ -84,9 +86,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         cargarChartJS: function () {
             var script = document.createElement('script');
             script.src = 'client/custom/modules/encuesta-de-liderazgo/lib/chart.min.js';
-            script.onload = function() {
-                this.cargarDatos();
-            }.bind(this);
+            script.onload = this.cargarDatos.bind(this);
             script.onerror = function() {
                 Espo.Ui.error('Error al cargar la librería de gráficos');
                 this.mostrarError('Error al cargar librerías necesarias');
@@ -95,18 +95,19 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         },
         
         cargarDatos: function () {
+            console.log('Iniciando carga de datos para categoría ID:', this.categoriaId);
+            
             this.fetchCategoriaById(this.categoriaId)
                 .then(function (categoria) {
                     if (!categoria) {
+                        console.error('Categoría no encontrada con ID:', this.categoriaId);
                         Espo.Ui.error('Categoría no encontrada con ID: ' + this.categoriaId);
                         this.mostrarNoData();
                         return Promise.reject('Categoría no encontrada');
                     }
                     
-                    // ACTUALIZAR DIRECTAMENTE EL TÍTULO EN EL DOM
+                    console.log('Categoría encontrada:', categoria.name);
                     this.$el.find('#categoria-nombre-titulo').text(categoria.name);
-                    
-                    // Configurar texto de categoría
                     this.configurarTextoCategoria(categoria.name);
                     
                     return Promise.all([
@@ -118,7 +119,11 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     var encuestas = resultados[0];
                     var preguntas = resultados[1];
                     
+                    console.log('Encuestas encontradas:', encuestas.length);
+                    console.log('Preguntas encontradas:', preguntas.length);
+                    
                     if (encuestas.length === 0 || preguntas.length === 0) {
+                        console.log('No hay datos: encuestas o preguntas vacías');
                         this.mostrarNoData();
                         return Promise.reject('No hay datos');
                     }
@@ -129,7 +134,10 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     );
                 }.bind(this))
                 .then(function (respuestas) {
+                    console.log('Respuestas encontradas:', respuestas.length);
+                    
                     if (respuestas.length === 0) {
+                        console.log('No hay respuestas para mostrar');
                         this.mostrarNoData();
                         return;
                     }
@@ -140,12 +148,14 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     
                 }.bind(this))
                 .catch(function (error) {
+                    console.error('Error en cargarDatos:', error);
                     if (error !== 'Categoría no encontrada' && error !== 'No hay datos') {
-                        Espo.Ui.error('Error al cargar los datos de la categoría');
+                        Espo.Ui.error('Error al cargar los datos de la categoría: ' + error);
                     }
+                    this.mostrarNoData();
                 }.bind(this));
         },
-        
+
         configurarTextoCategoria: function (nombreCategoria) {
             var textoElement = this.$el.find('#texto-categoria');
             var contenedorElement = this.$el.find('#texto-categoria-especifica');
@@ -159,8 +169,9 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         },
 
         fetchCategoriaById: function (categoriaId) {
+            var self = this;
             return new Promise(function (resolve, reject) {
-                this.getModelFactory().create('EncuestaLiderazgoCategoria', function (model) {
+                self.getModelFactory().create('EncuestaLiderazgoCategoria', function (model) {
                     model.id = categoriaId;
                     model.fetch().then(function () {
                         resolve({
@@ -170,13 +181,14 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     }).catch(function(error) {
                         reject(error);
                     });
-                }.bind(this));
-            }.bind(this));
+                });
+            });
         },
         
         fetchPreguntasPorCategoria: function (categoriaId) {
+            var self = this;
             return new Promise(function (resolve, reject) {
-                this.getCollectionFactory().create('EncuestaLiderazgoPregunta', function (collection) {
+                self.getCollectionFactory().create('EncuestaLiderazgoPregunta', function (collection) {
                     collection.maxSize = 200;
                     collection.where = [
                         { 
@@ -200,16 +212,17 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     }).catch(function(error) {
                         reject(error);
                     });
-                }.bind(this));
-            }.bind(this));
+                });
+            });
         },
         
         fetchEncuestasFiltradas: function () {
+            var self = this;
             return new Promise(function (resolve, reject) {
                 var whereConditions = [];
                 
-                if (this.filtros.anio) {
-                    var año = parseInt(this.filtros.anio);
+                if (self.filtros.anio) {
+                    var año = parseInt(self.filtros.anio);
                     var fechaInicio = año + '-01-01';
                     var fechaFin = año + '-12-31';
                     
@@ -220,33 +233,37 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     });
                 }
                 
-                if (this.filtros.cla && this.filtros.cla !== 'CLA0') {
+                if (self.filtros.cla && self.filtros.cla !== 'CLA0') {
                     whereConditions.push({
                         type: 'equals',
                         attribute: 'claTeamId',
-                        value: this.filtros.cla
+                        value: self.filtros.cla
                     });
                 }
                 
-                if (this.filtros.oficina) {
+                if (self.filtros.oficina && self.filtros.cla && self.filtros.cla !== 'CLA0') {
                     whereConditions.push({
                         type: 'equals',
                         attribute: 'oficinaTeamId', 
-                        value: this.filtros.oficina
+                        value: self.filtros.oficina
                     });
                 }
                 
-                if (this.filtros.usuario) {
+                if (self.filtros.usuario) {
                     whereConditions.push({
                         type: 'equals',
                         attribute: 'usuarioEvaluadoId',
-                        value: this.filtros.usuario
+                        value: self.filtros.usuario
                     });
                 }
                 
-                this.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
-                    collection.maxSize = 200;
-                    collection.where = whereConditions;
+                self.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
+                    var maxSize = (self.filtros.cla === 'CLA0') ? 100 : 200;
+                    collection.maxSize = maxSize;
+                    
+                    if (whereConditions.length > 0) {
+                        collection.where = whereConditions;
+                    }
                     
                     collection.fetch().then(function () {
                         var encuestas = collection.models.map(m => ({
@@ -254,53 +271,75 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                             fecha: m.get('fecha'),
                             usuarioEvaluadoId: m.get('usuarioEvaluadoId')
                         }));
+                        console.log('Encuestas encontradas:', encuestas.length, 'para CLA:', self.filtros.cla);
                         resolve(encuestas);
                     }).catch(function(error) {
+                        console.error('Error fetching encuestas:', error);
                         reject(error);
                     });
-                }.bind(this));
-            }.bind(this));
+                });
+            });
         },
         
         fetchRespuestasPorEncuestas: function (encuestaIds, preguntaIds) {
+            var self = this;
             return new Promise(function (resolve, reject) {
                 if (encuestaIds.length === 0 || preguntaIds.length === 0) {
                     resolve([]);
                     return;
                 }
                 
-                this.getCollectionFactory().create('EncuestaLiderazgoRespuesta', function (collection) {
-                    collection.maxSize = 500;
-                    collection.where = [
-                        { 
-                            type: 'in', 
-                            attribute: 'encuestaLiderazgoId', 
-                            value: encuestaIds 
-                        },
-                        { 
-                            type: 'in', 
-                            attribute: 'preguntaId', 
-                            value: preguntaIds 
-                        }
-                    ];
+                var maxSize = 200;
+                var allRespuestas = [];
+                
+                var processBatch = function (batchIndex) {
+                    if (batchIndex >= Math.ceil(encuestaIds.length / 50)) {
+                        resolve(allRespuestas);
+                        return;
+                    }
                     
-                    collection.fetch().then(function () {
-                        var respuestas = collection.models
-                            .filter(m => m.get('seleccion'))
-                            .map(m => ({
-                                id: m.id,
-                                encuestaLiderazgoId: m.get('encuestaLiderazgoId'),
-                                preguntaId: m.get('preguntaId'),
-                                seleccion: m.get('seleccion'),
-                                texto: m.get('texto')
-                            }));
-                        
-                        resolve(respuestas);
-                    }).catch(function(error) {
-                        reject(error);
-                    });
-                }.bind(this));
-            }.bind(this));
+                    var batch = encuestaIds.slice(batchIndex * 50, (batchIndex + 1) * 50);
+                    
+                    var fetchPage = function (offset) {
+                        self.getCollectionFactory().create('EncuestaLiderazgoRespuesta', function (collection) {
+                            collection.maxSize = maxSize;
+                            collection.offset = offset;
+                            collection.where = [
+                                { type: 'in', attribute: 'encuestaLiderazgoId', value: batch },
+                                { type: 'in', attribute: 'preguntaId', value: preguntaIds }
+                            ];
+                            
+                            collection.fetch().then(function () {
+                                var models = collection.models || [];
+                                var respuestasFiltradas = models
+                                    .filter(m => m.get('seleccion'))
+                                    .map(m => ({
+                                        id: m.id,
+                                        encuestaLiderazgoId: m.get('encuestaLiderazgoId'),
+                                        preguntaId: m.get('preguntaId'),
+                                        seleccion: m.get('seleccion'),
+                                        texto: m.get('texto')
+                                    }));
+                                
+                                allRespuestas = allRespuestas.concat(respuestasFiltradas);
+                                
+                                if (models.length === maxSize) {
+                                    fetchPage(offset + maxSize);
+                                } else {
+                                    processBatch(batchIndex + 1);
+                                }
+                            }).catch(function(error) {
+                                console.error('Error fetching respuestas batch:', batchIndex, error);
+                                reject(error);
+                            });
+                        });
+                    };
+                    
+                    fetchPage(0);
+                };
+                
+                processBatch(0);
+            });
         },
         
         generarGauge: function (respuestas) {
@@ -333,7 +372,6 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             this.$el.find('#total-respuestas').text(totalRespuestas);
             this.$el.find('#promedio-general').text(promedioBase10.toFixed(2) + '/10');
             
-            // Destruir gráfico anterior si existe
             if (this.gaugeChart) {
                 this.gaugeChart.destroy();
             }
@@ -484,6 +522,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         },
         
         generarTablaPreguntas: function (respuestas) {
+            var self = this;
             var tbody = this.$el.find('#preguntas-tbody');
             tbody.empty();
             
@@ -515,7 +554,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     
                     var row = `
                         <tr>
-                            <td>${this.escapeHtml(pregunta.pregunta)}</td>
+                            <td>${self.escapeHtml(pregunta.pregunta)}</td>
                             <td class="porcentaje-cell">${porcentajes['4']}%</td>
                             <td class="porcentaje-cell">${porcentajes['3']}%</td>
                             <td class="porcentaje-cell">${porcentajes['2']}%</td>
@@ -525,8 +564,8 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     `;
                     
                     tbody.append(row);
-                }.bind(this));
-            }.bind(this));
+                });
+            });
         },
         
         escapeHtml: function (text) {
