@@ -217,7 +217,9 @@
     padding: 25px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     transition: transform 0.3s, box-shadow 0.3s;
-    min-height: 320px; /* Aumentado para acomodar gráficos más grandes */
+    min-height: 400px; 
+    display: flex;
+    flex-direction: column;
 }
 
 .chart-card:hover {
@@ -266,6 +268,11 @@
 
 /* CONTENEDOR DE GRÁFICOS DE DONA MÁS ALTO - CORREGIDO */
 .chart-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible !important;
     position: relative;
     height: 330px;
     max-height: 330px;
@@ -299,7 +306,7 @@
 
 .chart-wrapper canvas {
     max-width: 100%;
-    max-height: 100%;
+    height: auto;
 }
 
 .sugerencias-card {

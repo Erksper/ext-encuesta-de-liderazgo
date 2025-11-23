@@ -257,27 +257,46 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     });
                 }
                 
-                self.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
-                    var maxSize = (self.filtros.cla === 'CLA0') ? 100 : 200;
-                    collection.maxSize = maxSize;
-                    
-                    if (whereConditions.length > 0) {
-                        collection.where = whereConditions;
-                    }
-                    
-                    collection.fetch().then(function () {
-                        var encuestas = collection.models.map(m => ({
-                            id: m.id,
-                            fecha: m.get('fecha'),
-                            usuarioEvaluadoId: m.get('usuarioEvaluadoId')
-                        }));
-                        console.log('Encuestas encontradas:', encuestas.length, 'para CLA:', self.filtros.cla);
-                        resolve(encuestas);
-                    }).catch(function(error) {
-                        console.error('Error fetching encuestas:', error);
-                        reject(error);
+                // Implementar paginación completa
+                const maxSize = 200;
+                let allEncuestas = [];
+                
+                const fetchPage = function (offset) {
+                    self.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
+                        collection.maxSize = maxSize;
+                        collection.offset = offset;
+                        
+                        if (whereConditions.length > 0) {
+                            collection.where = whereConditions;
+                        }
+                        
+                        collection.fetch().then(function () {
+                            var models = collection.models || [];
+                            var encuestas = models.map(m => ({
+                                id: m.id,
+                                fecha: m.get('fecha'),
+                                usuarioEvaluadoId: m.get('usuarioEvaluadoId')
+                            }));
+                            
+                            allEncuestas = allEncuestas.concat(encuestas);
+                            
+                            console.log('Página cargada. Offset:', offset, 'Encuestas en esta página:', models.length, 'Total acumulado:', allEncuestas.length);
+                            
+                            // Continuar si hay más datos
+                            if (models.length === maxSize && allEncuestas.length < collection.total) {
+                                fetchPage(offset + maxSize);
+                            } else {
+                                console.log('Carga completa. Total encuestas:', allEncuestas.length);
+                                resolve(allEncuestas);
+                            }
+                        }).catch(function(error) {
+                            console.error('Error fetching encuestas página', offset, ':', error);
+                            reject(error);
+                        });
                     });
-                });
+                };
+                
+                fetchPage(0);
             });
         },
         
@@ -289,23 +308,36 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     return;
                 }
                 
-                var maxSize = 200;
-                var allRespuestas = [];
+                console.log('Iniciando carga de respuestas para', encuestaIds.length, 'encuestas y', preguntaIds.length, 'preguntas');
                 
-                var processBatch = function (batchIndex) {
-                    if (batchIndex >= Math.ceil(encuestaIds.length / 50)) {
+                const maxSize = 200;
+                let allRespuestas = [];
+                
+                // Procesar en lotes de 50 encuestas para evitar URLs muy largas
+                const batchSize = 50;
+                let currentBatch = 0;
+                const totalBatches = Math.ceil(encuestaIds.length / batchSize);
+                
+                const processBatch = function () {
+                    if (currentBatch >= totalBatches) {
+                        console.log('Carga completa de respuestas. Total:', allRespuestas.length);
                         resolve(allRespuestas);
                         return;
                     }
                     
-                    var batch = encuestaIds.slice(batchIndex * 50, (batchIndex + 1) * 50);
+                    const startIdx = currentBatch * batchSize;
+                    const endIdx = Math.min(startIdx + batchSize, encuestaIds.length);
+                    const batchEncuestaIds = encuestaIds.slice(startIdx, endIdx);
                     
-                    var fetchPage = function (offset) {
+                    console.log('Procesando lote', currentBatch + 1, 'de', totalBatches, '- Encuestas:', batchEncuestaIds.length);
+                    
+                    // Paginar dentro de cada lote
+                    const fetchPage = function (offset) {
                         self.getCollectionFactory().create('EncuestaLiderazgoRespuesta', function (collection) {
                             collection.maxSize = maxSize;
                             collection.offset = offset;
                             collection.where = [
-                                { type: 'in', attribute: 'encuestaLiderazgoId', value: batch },
+                                { type: 'in', attribute: 'encuestaLiderazgoId', value: batchEncuestaIds },
                                 { type: 'in', attribute: 'preguntaId', value: preguntaIds }
                             ];
                             
@@ -323,13 +355,18 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                                 
                                 allRespuestas = allRespuestas.concat(respuestasFiltradas);
                                 
-                                if (models.length === maxSize) {
+                                console.log('Lote', currentBatch + 1, 'página offset', offset, '- Respuestas:', respuestasFiltradas.length, 'Total acumulado:', allRespuestas.length);
+                                
+                                // Continuar paginando si hay más datos en este lote
+                                if (models.length === maxSize && (offset + maxSize) < collection.total) {
                                     fetchPage(offset + maxSize);
                                 } else {
-                                    processBatch(batchIndex + 1);
+                                    // Pasar al siguiente lote
+                                    currentBatch++;
+                                    processBatch();
                                 }
                             }).catch(function(error) {
-                                console.error('Error fetching respuestas batch:', batchIndex, error);
+                                console.error('Error fetching respuestas lote', currentBatch, 'offset', offset, ':', error);
                                 reject(error);
                             });
                         });
@@ -338,7 +375,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     fetchPage(0);
                 };
                 
-                processBatch(0);
+                processBatch();
             });
         },
         
@@ -346,6 +383,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             var container = this.$el.find('.gauge-wrapper');
             var ctx = document.getElementById('gauge-general');
             if (!ctx) {
+                console.warn('No se encontró el elemento canvas gauge-general');
                 return;
             }
             
@@ -364,6 +402,32 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                 }
             });
             
+            // VALIDACIÓN CRÍTICA: Si no hay respuestas, mostrar mensaje y salir
+            if (totalRespuestas === 0) {
+                console.warn('No hay respuestas para generar el gauge');
+                this.$el.find('#total-respuestas').text('0');
+                this.$el.find('#promedio-general').text('0.00/10');
+                
+                // Destruir chart anterior si existe
+                if (this.gaugeChart) {
+                    this.gaugeChart.destroy();
+                    this.gaugeChart = null;
+                }
+                
+                // Limpiar labels anteriores
+                container.find('.chart-labels').remove();
+                
+                // Mostrar mensaje en el canvas
+                var canvasCtx = ctx.getContext('2d');
+                canvasCtx.clearRect(0, 0, ctx.width, ctx.height);
+                canvasCtx.fillStyle = '#999';
+                canvasCtx.font = '14px Arial';
+                canvasCtx.textAlign = 'center';
+                canvasCtx.fillText('Sin datos para mostrar', ctx.width / 2, ctx.height / 2);
+                
+                return;
+            }
+            
             var sumaTotal = parseInt(distribucion['4']) * 4 + parseInt(distribucion['3']) * 3 + 
                         parseInt(distribucion['2']) * 2 + parseInt(distribucion['1']) * 1;
             var promedio = totalRespuestas > 0 ? (sumaTotal / totalRespuestas) : 0;
@@ -379,6 +443,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             container.find('.chart-labels').remove();
             
             if (typeof Chart === 'undefined') {
+                console.error('Chart.js no está cargado');
                 return;
             }
             
@@ -401,124 +466,147 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                 this.COLORES['4']
             ];
             
-            var porcentajes = data.map(val => totalRespuestas > 0 ? ((val / totalRespuestas) * 100).toFixed(1) : 0);
+            // VALIDACIÓN: Asegurar que data tenga valores válidos
+            var dataValida = data.map(val => {
+                var numVal = parseInt(val) || 0;
+                return numVal >= 0 ? numVal : 0;
+            });
             
-            this.gaugeChart = new Chart(ctx.getContext('2d'), {
-                type: 'doughnut',
-                data: {
-                    datasets: [{
-                        data: data,
-                        backgroundColor: backgroundColors,
-                        borderWidth: 2,
-                        borderColor: '#fff'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    cutout: '50%',
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    var label = context.label || '';
-                                    var value = context.parsed || 0;
-                                    var porcentaje = totalRespuestas > 0 ? ((value / totalRespuestas) * 100).toFixed(1) : 0;
-                                    return label + ': ' + value + ' (' + porcentaje + '%)';
+            var porcentajes = dataValida.map(val => totalRespuestas > 0 ? ((val / totalRespuestas) * 100).toFixed(1) : '0.0');
+            
+            try {
+                this.gaugeChart = new Chart(ctx.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        datasets: [{
+                            data: dataValida,
+                            backgroundColor: backgroundColors,
+                            borderWidth: 2,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        cutout: '50%',
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                enabled: true,
+                                callbacks: {
+                                    label: function(context) {
+                                        var label = labels[context.dataIndex] || '';
+                                        var value = context.parsed || 0;
+                                        var porcentaje = totalRespuestas > 0 ? ((value / totalRespuestas) * 100).toFixed(1) : '0.0';
+                                        return label + ': ' + value + ' (' + porcentaje + '%)';
+                                    }
                                 }
                             }
                         }
-                    }
-                },
-                plugins: [{
-                    id: 'etiquetasExternas',
-                    afterDraw: function(chart) {
-                        if (totalRespuestas === 0) return;
-                        
-                        var chartArea = chart.chartArea;
-                        var centerX = (chartArea.left + chartArea.right) / 2;
-                        var centerY = (chartArea.top + chartArea.bottom) / 2;
-                        var radius = (chartArea.right - chartArea.left) / 2;
-                        
-                        var labelsContainer = document.createElement('div');
-                        labelsContainer.className = 'chart-labels';
-                        container.append(labelsContainer);
-                        
-                        var posicionesEtiquetas = [
-                            { x: centerX - radius * 1.4, y: centerY - radius * 0.8 },
-                            { x: centerX + radius * 1.4, y: centerY - radius * 0.8 },
-                            { x: centerX + radius * 1.4, y: centerY + radius * 0.8 },
-                            { x: centerX - radius * 1.4, y: centerY + radius * 0.8 }
-                        ];
-                        
-                        var angleOffset = -Math.PI / 2;
-                        
-                        for (var i = 0; i < data.length; i++) {
-                            if (data[i] === 0) continue;
+                    },
+                    plugins: [{
+                        id: 'etiquetasExternas',
+                        afterDraw: function(chart) {
+                            if (totalRespuestas === 0) return;
                             
-                            var sliceAngle = (data[i] / totalRespuestas) * 2 * Math.PI;
-                            var angle = angleOffset + sliceAngle / 2;
-                            var porcentaje = porcentajes[i];
-                            var posicionEtiqueta = posicionesEtiquetas[i];
-                            
-                            var pointX = centerX + Math.cos(angle) * (radius * 0.9);
-                            var pointY = centerY + Math.sin(angle) * (radius * 0.9);
-                            
-                            var line = document.createElement('div');
-                            line.className = 'chart-label-line';
-                            
-                            var lineLength = Math.sqrt(
-                                Math.pow(posicionEtiqueta.x - pointX, 2) + 
-                                Math.pow(posicionEtiqueta.y - pointY, 2)
-                            );
-                            
-                            var lineAngle = Math.atan2(posicionEtiqueta.y - pointY, posicionEtiqueta.x - pointX);
-                            
-                            line.style.width = lineLength + 'px';
-                            line.style.height = '1px';
-                            line.style.left = pointX + 'px';
-                            line.style.top = pointY + 'px';
-                            line.style.transform = 'rotate(' + lineAngle + 'rad)';
-                            line.style.background = backgroundColors[i];
-                            
-                            labelsContainer.appendChild(line);
-                            
-                            var label = document.createElement('div');
-                            label.className = 'chart-label';
-                            label.style.left = posicionEtiqueta.x + 'px';
-                            label.style.top = posicionEtiqueta.y + 'px';
-                            label.style.transform = 'translate(-50%, -50%)';
-                            label.style.borderColor = backgroundColors[i];
-                            
-                            var esFondoOscuro = (
-                                backgroundColors[i] === '#333333' ||
-                                backgroundColors[i] === '#6B6F47'
-                            );
-                            
-                            if (esFondoOscuro) {
-                                label.style.background = backgroundColors[i];
-                                label.style.color = '#ffffff';
-                                label.querySelector = function() { return null; };
-                            } else {
-                                label.style.background = '#ffffff';
-                                label.style.color = '#333333';
+                            // VALIDACIÓN: Verificar que chart y chartArea existen
+                            if (!chart || !chart.chartArea) {
+                                console.warn('Chart o chartArea no está disponible');
+                                return;
                             }
                             
-                            label.innerHTML = '<div style="font-weight: bold;">' + labels[i] + '</div>' + 
-                                            '<div class="chart-label-value" style="color: ' + 
-                                            (esFondoOscuro ? '#e0e0e0' : '#666666') + ';">' + 
-                                            data[i] + ' (' + porcentaje + '%)</div>';
+                            var chartArea = chart.chartArea;
+                            var centerX = (chartArea.left + chartArea.right) / 2;
+                            var centerY = (chartArea.top + chartArea.bottom) / 2;
+                            var radius = (chartArea.right - chartArea.left) / 2;
                             
-                            labelsContainer.appendChild(label);
+                            var labelsContainer = document.createElement('div');
+                            labelsContainer.className = 'chart-labels';
+                            container.append(labelsContainer);
                             
-                            angleOffset += sliceAngle;
+                            var posicionesEtiquetas = [
+                                { x: centerX - radius * 1.4, y: centerY - radius * 0.8 },
+                                { x: centerX + radius * 1.4, y: centerY - radius * 0.8 },
+                                { x: centerX + radius * 1.4, y: centerY + radius * 0.8 },
+                                { x: centerX - radius * 1.4, y: centerY + radius * 0.8 }
+                            ];
+                            
+                            var angleOffset = -Math.PI / 2;
+                            
+                            for (var i = 0; i < dataValida.length; i++) {
+                                if (dataValida[i] === 0) continue;
+                                
+                                var sliceAngle = (dataValida[i] / totalRespuestas) * 2 * Math.PI;
+                                var angle = angleOffset + sliceAngle / 2;
+                                var porcentaje = porcentajes[i];
+                                var posicionEtiqueta = posicionesEtiquetas[i];
+                                
+                                var pointX = centerX + Math.cos(angle) * (radius * 0.9);
+                                var pointY = centerY + Math.sin(angle) * (radius * 0.9);
+                                
+                                var line = document.createElement('div');
+                                line.className = 'chart-label-line';
+                                
+                                var lineLength = Math.sqrt(
+                                    Math.pow(posicionEtiqueta.x - pointX, 2) + 
+                                    Math.pow(posicionEtiqueta.y - pointY, 2)
+                                );
+                                
+                                var lineAngle = Math.atan2(posicionEtiqueta.y - pointY, posicionEtiqueta.x - pointX);
+                                
+                                line.style.width = lineLength + 'px';
+                                line.style.height = '1px';
+                                line.style.left = pointX + 'px';
+                                line.style.top = pointY + 'px';
+                                line.style.transform = 'rotate(' + lineAngle + 'rad)';
+                                line.style.background = backgroundColors[i];
+                                
+                                labelsContainer.appendChild(line);
+                                
+                                var label = document.createElement('div');
+                                label.className = 'chart-label';
+                                label.style.left = posicionEtiqueta.x + 'px';
+                                label.style.top = posicionEtiqueta.y + 'px';
+                                label.style.transform = 'translate(-50%, -50%)';
+                                label.style.borderColor = backgroundColors[i];
+                                
+                                var esFondoOscuro = (
+                                    backgroundColors[i] === '#333333' ||
+                                    backgroundColors[i] === '#6B6F47'
+                                );
+                                
+                                if (esFondoOscuro) {
+                                    label.style.background = backgroundColors[i];
+                                    label.style.color = '#ffffff';
+                                } else {
+                                    label.style.background = '#ffffff';
+                                    label.style.color = '#333333';
+                                }
+                                
+                                label.innerHTML = '<div style="font-weight: bold;">' + labels[i] + '</div>' + 
+                                                '<div class="chart-label-value" style="color: ' + 
+                                                (esFondoOscuro ? '#e0e0e0' : '#666666') + ';">' + 
+                                                dataValida[i] + ' (' + porcentaje + '%)</div>';
+                                
+                                labelsContainer.appendChild(label);
+                                
+                                angleOffset += sliceAngle;
+                            }
                         }
-                    }
-                }]
-            });
+                    }]
+                });
+            } catch (error) {
+                console.error('Error al crear el gráfico gauge:', error);
+                Espo.Ui.error('Error al generar el gráfico de distribución');
+                
+                // Limpiar en caso de error
+                if (this.gaugeChart) {
+                    this.gaugeChart.destroy();
+                    this.gaugeChart = null;
+                }
+            }
         },
         
         generarTablaPreguntas: function (respuestas) {

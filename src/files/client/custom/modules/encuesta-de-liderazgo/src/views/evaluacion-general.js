@@ -61,39 +61,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
 
         registrarPluginsChart: function() {
             if (typeof Chart === 'undefined') return;
-            
-            const doughnutLabelsPlugin = {
-                id: 'doughnutLabels',
-                afterDraw: function(chart) {
-                    if (chart.config.type === 'doughnut') {
-                        var ctx = chart.ctx;
-                        var total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-                        
-                        chart.data.datasets.forEach(function(dataset, i) {
-                            var meta = chart.getDatasetMeta(i);
-                            if (!meta.hidden) {
-                                meta.data.forEach(function(element, index) {
-                                    var value = dataset.data[index];
-                                    var model = element;
-                                    var startAngle = model.startAngle;
-                                    var endAngle = model.endAngle;
-                                    var angle = startAngle + (endAngle - startAngle) / 2;
-                                    var radius = model.outerRadius * 1.35;
-                                    var x = model.x + Math.cos(angle) * radius;
-                                    var y = model.y + Math.sin(angle) * radius;
-                                    var percentage = total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%';
-                                    
-                                    ctx.fillStyle = '#333333';
-                                    ctx.font = 'bold 12px Arial';
-                                    ctx.textAlign = 'center';
-                                    ctx.textBaseline = 'middle';
-                                    ctx.fillText(percentage, x, y);
-                                });
-                            }
-                        });
-                    }
-                }
-            };
 
             const barLabelsPlugin = {
                 id: 'barLabels',
@@ -134,8 +101,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     }
                 }
             };
-
-            Chart.register(doughnutLabelsPlugin, barLabelsPlugin);
+            Chart.register(barLabelsPlugin);
         },
         
         data: function () {
@@ -437,6 +403,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             this.state.cargandoDatos = true;
             this.mostrarLoading(true);
             
+            // ✅ AQUÍ: Primer indicador de progreso
+            this.mostrarProgresoCarga('Iniciando carga de datos...', 0);
+            
             this.state.encuestas = [];
             this.state.respuestas = [];
             this.state.preguntas = [];
@@ -445,6 +414,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.fetchCategorias(),
                 this.fetchEncuestasFiltradas()
             ]).then(function ([categorias, encuestas]) {
+                // ✅ AQUÍ: Actualizar progreso después de cargar encuestas
+                this.mostrarProgresoCarga('Categorías y encuestas cargadas...', 25);
+                
                 this.state.categorias = categorias.filter(c => c.name.toLowerCase() !== 'general');
                 this.state.encuestas = encuestas;
                 
@@ -453,6 +425,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     this.state.cargandoDatos = false;
                     return Promise.resolve(null);
                 }
+                
+                // ✅ AQUÍ: Actualizar progreso antes de cargar preguntas y respuestas
+                this.mostrarProgresoCarga('Cargando preguntas y respuestas...', 40);
                 
                 return Promise.all([
                     this.fetchTodasLasPreguntas(),
@@ -472,21 +447,39 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     return;
                 }
                 
+                // ✅ AQUÍ: Actualizar progreso después de cargar respuestas
+                this.mostrarProgresoCarga('Respuestas cargadas, procesando datos...', 80);
+                
                 this.state.preguntas = preguntas.filter(p => {
                     var catNombre = p.categoriaLiderazgoName || '';
                     return catNombre.toLowerCase() !== 'general';
                 });
                 this.state.respuestas = respuestas;
                 
+                // ✅ AQUÍ: Actualizar progreso antes de generar gráficos
+                this.mostrarProgresoCarga('Generando estadísticas...', 90);
+                
                 this.generarEstadisticas();
                 this.generarGraficoPromedios();
+                
+                // ✅ AQUÍ: Actualizar progreso antes de generar gráficos finales
+                this.mostrarProgresoCarga('Generando gráficos...', 95);
+                
                 this.generarGraficos();
-                this.mostrarContenido();
+                
+                // ✅ AQUÍ: Progreso completo antes de mostrar contenido
+                this.mostrarProgresoCarga('Completado', 100);
+                
+                // Pequeño delay para que el usuario vea el 100%
+                setTimeout(function() {
+                    this.mostrarContenido();
+                }.bind(this), 300);
                 
                 this.state.datosCargados = true;
                 this.state.cargandoDatos = false;
                 
             }.bind(this)).catch(function (error) {
+                console.error('Error al cargar los datos:', error);
                 Espo.Ui.error('Error al cargar los datos');
                 this.mostrarNoData();
                 this.state.cargandoDatos = false;
@@ -749,6 +742,43 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 fetchPage(0);
             }.bind(this));
         },
+
+        mostrarProgresoCarga: function(mensaje, porcentaje) {
+            var loadingArea = this.$el.find('#loading-area');
+            
+            if (!loadingArea.length) {
+                return;
+            }
+            
+            var progressContainer = loadingArea.find('.progress-container');
+            
+            if (progressContainer.length === 0) {
+                // Crear el contenedor de progreso
+                loadingArea.append(`
+                    <div class="progress-container" style="margin-top: 20px; max-width: 500px; margin-left: auto; margin-right: auto;">
+                        <div class="progress-bar-wrapper" style="width: 100%; height: 30px; background: #f0f0f0; border-radius: 15px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);">
+                            <div class="progress-fill" style="height: 100%; background: linear-gradient(90deg, #6B6F47 0%, #A0A57E 100%); width: 0%; transition: width 0.4s ease-out; display: flex; align-items: center; justify-content: center;">
+                                <span class="progress-percentage" style="color: white; font-weight: bold; font-size: 12px;"></span>
+                            </div>
+                        </div>
+                        <div class="progress-text" style="text-align: center; margin-top: 10px; color: #666; font-size: 14px; min-height: 20px;"></div>
+                    </div>
+                `);
+                progressContainer = loadingArea.find('.progress-container');
+            }
+            
+            // Actualizar barra y texto
+            progressContainer.find('.progress-fill').css('width', porcentaje + '%');
+            progressContainer.find('.progress-percentage').text(porcentaje + '%');
+            progressContainer.find('.progress-text').text(mensaje);
+            
+            // Si llegamos al 100%, ocultar después de un momento
+            if (porcentaje >= 100) {
+                setTimeout(function() {
+                    progressContainer.fadeOut(200);
+                }, 500);
+            }
+        },
         
         fetchRespuestasPorEncuestas: function (encuestaIds) {
             return new Promise(function (resolve, reject) {
@@ -757,48 +787,112 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     return;
                 }
                 
+                console.log('Iniciando carga optimizada de respuestas para', encuestaIds.length, 'encuestas');
+                
                 var maxSize = 200;
                 var allRespuestas = [];
                 
+                // OPTIMIZACIÓN: Usar lotes más grandes para territorio nacional
+                var batchSize = encuestaIds.length > 200 ? 100 : 50; // Lotes de 100 si hay muchas encuestas
+                var totalBatches = Math.ceil(encuestaIds.length / batchSize);
+                var batchesCompleted = 0;
+                
+                // OPTIMIZACIÓN: Procesar múltiples lotes en paralelo (máximo 3 a la vez)
+                var maxParallelBatches = 3;
+                var currentBatchIndex = 0;
+                
                 var processBatch = function (batchIndex) {
-                    if (batchIndex >= Math.ceil(encuestaIds.length / 50)) {
+                    return new Promise(function(resolveBatch, rejectBatch) {
+                        var startIdx = batchIndex * batchSize;
+                        var endIdx = Math.min(startIdx + batchSize, encuestaIds.length);
+                        var batchEncuestaIds = encuestaIds.slice(startIdx, endIdx);
+                        
+                        console.log('Procesando lote', batchIndex + 1, 'de', totalBatches, '- Encuestas:', batchEncuestaIds.length);
+                        
+                        var batchRespuestas = [];
+                        
+                        var fetchPage = function (offset) {
+                            this.getCollectionFactory().create('EncuestaLiderazgoRespuesta', function (collection) {
+                                collection.maxSize = maxSize;
+                                collection.offset = offset;
+                                collection.where = [
+                                    { type: 'in', attribute: 'encuestaLiderazgoId', value: batchEncuestaIds }
+                                ];
+                                
+                                collection.fetch().then(function () {
+                                    var models = collection.models || [];
+                                    var respuestasFiltradas = models.map(m => ({
+                                        id: m.id,
+                                        encuestaLiderazgoId: m.get('encuestaLiderazgoId'),
+                                        preguntaId: m.get('preguntaId'),
+                                        seleccion: m.get('seleccion'),
+                                        texto: m.get('texto')
+                                    }));
+                                    
+                                    batchRespuestas = batchRespuestas.concat(respuestasFiltradas);
+                                    
+                                    console.log('Lote', batchIndex + 1, 'offset', offset, '- Respuestas:', respuestasFiltradas.length, 'Acumulado del lote:', batchRespuestas.length);
+                                    
+                                    if (models.length === maxSize && (offset + maxSize) < collection.total) {
+                                        fetchPage(offset + maxSize);
+                                    } else {
+                                        // Lote completado
+                                        resolveBatch(batchRespuestas);
+                                    }
+                                }.bind(this)).catch(function(error) {
+                                    console.error('Error en lote', batchIndex + 1, 'offset', offset, ':', error);
+                                    rejectBatch(error);
+                                });
+                            }.bind(this));
+                        }.bind(this);
+                        
+                        fetchPage(0);
+                    }.bind(this));
+                }.bind(this);
+                
+                // OPTIMIZACIÓN: Procesar lotes en paralelo
+                var processNextBatches = function() {
+                    var promises = [];
+                    
+                    // Iniciar hasta maxParallelBatches lotes en paralelo
+                    for (var i = 0; i < maxParallelBatches && currentBatchIndex < totalBatches; i++) {
+                        promises.push(processBatch(currentBatchIndex));
+                        currentBatchIndex++;
+                    }
+                    
+                    if (promises.length === 0) {
+                        // Todos los lotes completados
+                        console.log('Carga completa de respuestas. Total:', allRespuestas.length);
                         resolve(allRespuestas);
                         return;
                     }
                     
-                    var batch = encuestaIds.slice(batchIndex * 50, (batchIndex + 1) * 50);
-                    
-                    var fetchPage = function (offset) {
-                        this.getCollectionFactory().create('EncuestaLiderazgoRespuesta', function (collection) {
-                            collection.maxSize = maxSize;
-                            collection.offset = offset;
-                            collection.where = [
-                                { type: 'in', attribute: 'encuestaLiderazgoId', value: batch }
-                            ];
-                            
-                            collection.fetch().then(function () {
-                                var models = collection.models || [];
-                                allRespuestas = allRespuestas.concat(models.map(m => ({
-                                    id: m.id,
-                                    encuestaLiderazgoId: m.get('encuestaLiderazgoId'),
-                                    preguntaId: m.get('preguntaId'),
-                                    seleccion: m.get('seleccion'),
-                                    texto: m.get('texto')
-                                })));
-                                
-                                if (models.length === maxSize) {
-                                    fetchPage(offset + maxSize);
-                                } else {
-                                    processBatch(batchIndex + 1);
-                                }
-                            }.bind(this)).catch(reject);
-                        }.bind(this));
-                    }.bind(this);
-                    
-                    fetchPage(0);
-                }.bind(this);
+                    // Esperar a que terminen los lotes actuales
+                    Promise.all(promises).then(function(results) {
+                        // Combinar resultados
+                        results.forEach(function(batchResult) {
+                            allRespuestas = allRespuestas.concat(batchResult);
+                        });
+                        
+                        batchesCompleted += promises.length;
+                        console.log('Progreso:', batchesCompleted, 'de', totalBatches, 'lotes completados. Total respuestas:', allRespuestas.length);
+                        
+                        // Procesar siguiente grupo de lotes
+                        if (currentBatchIndex < totalBatches) {
+                            processNextBatches();
+                        } else {
+                            console.log('Carga completa de respuestas. Total:', allRespuestas.length);
+                            resolve(allRespuestas);
+                        }
+                    }).catch(function(error) {
+                        console.error('Error procesando lotes en paralelo:', error);
+                        reject(error);
+                    });
+                };
                 
-                processBatch(0);
+                // Iniciar procesamiento en paralelo
+                processNextBatches();
+                
             }.bind(this));
         },
         
@@ -840,6 +934,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             
             var promediosPorCategoria = [];
             var labels = [];
+            var categoriaIds = []; // NUEVO: Guardar los IDs de las categorías
             
             this.state.categorias.forEach(function (categoria) {
                 var preguntasCategoria = this.state.preguntas.filter(p => p.categoriaLiderazgoId === categoria.id);
@@ -869,6 +964,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 
                 labels.push(categoria.name);
                 promediosPorCategoria.push(promedio);
+                categoriaIds.push(categoria.id); // NUEVO: Guardar el ID
                 
             }.bind(this));
             
@@ -979,8 +1075,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     onClick: function(event, elements) {
                         if (elements && elements.length > 0) {
                             var index = elements[0].index;
-                            var categoriaNombre = labels[index];
-                            this.navegarACategoria(categoriaNombre);
+                            var categoriaId = categoriaIds[index]; // MODIFICADO: Usar el ID en lugar del nombre
+                            this.navegarACategoria(categoriaId);
                         }
                     }.bind(this)
                 }
@@ -1021,7 +1117,22 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 if (chart && chart.destroy) chart.destroy();
             });
             this.state.charts = {};
-            
+
+            if (!CanvasRenderingContext2D.prototype.roundRect) {
+                CanvasRenderingContext2D.prototype.roundRect = function(x, y, width, height, radius) {
+                    if (width < 2 * radius) radius = width / 2;
+                    if (height < 2 * radius) radius = height / 2;
+                    this.beginPath();
+                    this.moveTo(x + radius, y);
+                    this.arcTo(x + width, y, x + width, y + height, radius);
+                    this.arcTo(x + width, y + height, x, y + height, radius);
+                    this.arcTo(x, y + height, x, y, radius);
+                    this.arcTo(x, y, x + width, y, radius);
+                    this.closePath();
+                    return this;
+                };
+            }
+
             this.state.categorias.forEach(function (categoria) {
                 var preguntasCategoria = this.state.preguntas.filter(p => p.categoriaLiderazgoId === categoria.id);
                 
@@ -1056,13 +1167,13 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                             ${tieneTooltip ? `
                             <div class="info-icon-container">
                                 <i class="fas fa-info-circle info-icon" 
-                                   data-toggle="tooltip" 
-                                   title="${this.escapeHtml(textoCategoria)}"></i>
+                                data-toggle="tooltip" 
+                                title="${this.escapeHtml(textoCategoria)}"></i>
                             </div>
                             ` : ''}
                         </div>
-                        <div class="chart-wrapper">
-                            <canvas id="${canvasId}"></canvas>
+                        <div class="chart-wrapper" style="height: 550px; width: 100%; position: relative; padding-bottom: 20px;">
+                            <canvas id="${canvasId}" style="max-height: 550px;"></canvas>
                         </div>
                     </div>
                 `;
@@ -1072,6 +1183,13 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 setTimeout(function () {
                     var ctx = document.getElementById(canvasId);
                     if (!ctx) return;
+                    
+                    // NUEVO: Validar que tengamos datos antes de crear el chart
+                    var totalValores = Object.values(conteo).reduce((a, b) => a + b, 0);
+                    if (totalValores === 0) {
+                        console.warn('No hay datos para la categoría:', categoria.name);
+                        return;
+                    }
                     
                     this.state.charts[canvasId] = new Chart(ctx.getContext('2d'), {
                         type: 'doughnut',
@@ -1089,17 +1207,18 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                             maintainAspectRatio: true,
                             layout: {
                                 padding: {
-                                    top: 40,
-                                    bottom: 10,
-                                    left: 10,
-                                    right: 10
+                                    top: 10,      // REDUCIDO porque no hay labels arriba
+                                    bottom: 30,   // AUMENTADO para la leyenda
+                                    left: 10,     // REDUCIDO
+                                    right: 10     // REDUCIDO
                                 }
                             },
                             plugins: {
                                 legend: {
+                                    display: true,
                                     position: 'bottom',
                                     labels: {
-                                        padding: 15,
+                                        padding: 12,          // Espacio entre cada item
                                         font: { 
                                             size: 11,
                                             family: 'Arial, sans-serif'
@@ -1107,6 +1226,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                         boxWidth: 12,
                                         boxHeight: 12,
                                         usePointStyle: true,
+                                        pointStyle: 'circle',
                                         generateLabels: function(chart) {
                                             var data = chart.data;
                                             if (data.labels.length && data.datasets.length) {
@@ -1116,8 +1236,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                                     return {
                                                         text: label + ' (' + value + ' - ' + percentage + '%)',
                                                         fillStyle: data.datasets[0].backgroundColor[i],
-                                                        strokeStyle: data.datasets[0].borderColor[i],
-                                                        lineWidth: data.datasets[0].borderWidth[i] || 1,
+                                                        strokeStyle: data.datasets[0].borderColor || '#fff',
+                                                        lineWidth: 1,
                                                         hidden: false,
                                                         index: i
                                                     };
@@ -1125,9 +1245,23 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                             }
                                             return [];
                                         }
-                                    }
+                                    },
+                                    // ✅ CLAVE: Configurar correctamente el espacio para la leyenda
+                                    maxHeight: 100,  // Altura máxima para la leyenda
+                                    fullSize: true   // Asegurar que ocupe todo el espacio necesario
                                 },
                                 tooltip: {
+                                    enabled: true,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                    titleFont: {
+                                        size: 13,
+                                        weight: 'bold'
+                                    },
+                                    bodyFont: {
+                                        size: 12
+                                    },
+                                    padding: 10,
+                                    displayColors: true,
                                     callbacks: {
                                         label: function(context) {
                                             var label = context.label || '';
@@ -1138,7 +1272,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                     }
                                 }
                             },
-                            cutout: '60%'
+                            cutout: '45%',
+                            // ✅ Asegurar que el chart se ajuste correctamente
+                            aspectRatio: 1.0  // Relación de aspecto para dar más espacio vertical
                         }
                     });
                 }.bind(this), 100);
@@ -1164,7 +1300,26 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             }.bind(this), 200);
         },
     
-        navegarACategoria: function(categoriaId) {
+        navegarACategoria: function(categoriaIdOrName) {
+            // Si recibimos un nombre en lugar de ID, buscar el ID
+            var categoriaId = categoriaIdOrName;
+            
+            // Verificar si lo que recibimos es un nombre (string que no es un ID)
+            var categoria = this.state.categorias.find(c => c.id === categoriaIdOrName);
+            
+            if (!categoria) {
+                // Si no se encontró por ID, buscar por nombre
+                categoria = this.state.categorias.find(c => c.name === categoriaIdOrName);
+                if (categoria) {
+                    categoriaId = categoria.id;
+                }
+            }
+            
+            if (!categoriaId) {
+                console.error('No se pudo determinar el ID de la categoría:', categoriaIdOrName);
+                return;
+            }
+            
             var filtrosParam = [
                 categoriaId,
                 this.state.fechaSeleccionada || 'null',
@@ -1186,6 +1341,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.$el.find('#loading-area').show();
                 this.$el.find('#content-area').hide();
                 this.$el.find('#no-data-area').hide();
+                
+                // Limpiar barra de progreso anterior si existe
+                this.$el.find('.progress-container').remove();
             }
         },
         
