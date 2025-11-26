@@ -140,7 +140,6 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                             }
                             
                         }.bind(this)).catch(function(error) {
-                            console.error('Error cargando lote de preguntas:', error);
                             resolve(todasLasPreguntas);
                         });
                     }.bind(this));
@@ -421,7 +420,6 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                 this.reRender();
                 
             } catch (error) {
-                console.error('Error guardando datos:', error);
                 Espo.Ui.error('Error al guardar los datos: ' + (error.message || error));
                 this.wait(false);
             }
@@ -515,9 +513,6 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                     
                     const guardarPregunta = (index) => {
                         if (index >= nuevasPreguntasParaAgregar.length) {
-                            if (erroresGuardado.length > 0) {
-                                console.warn("Errores al guardar preguntas:", erroresGuardado);
-                            }
                             resolve(mapaPreguntas);
                             return;
                         }
@@ -547,7 +542,6 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                                 }, 50);
                                 
                             }).catch(function(error) {
-                                console.error("Error guardando pregunta:", error);
                                 erroresGuardado.push(`Error en pregunta "${pregunta.texto}": ${error.message}`);
                                 procesadas++;
                                 
@@ -561,7 +555,6 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                     guardarPregunta(0);
                     
                 }.bind(this)).catch(function(error) {
-                    console.error("Error cargando preguntas existentes:", error);
                     reject(error);
                 });
             }.bind(this));
@@ -598,7 +591,6 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                         .then(() => {
                             encuestasGuardadas++;
                             indiceActual++;
-                            // Pequeña pausa antes de la siguiente
                             setTimeout(() => procesarSiguienteEncuesta(), 50);
                         })
                         .catch(error => {
@@ -636,12 +628,9 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                         
                         model.save().then(function() {
                             const encuestaId = model.id;
-                            console.log(`Encuesta ${encuestaId} guardada, guardando ${encuesta.respuestas.length} respuestas...`);
                             
-                            // Guardar respuestas en lotes pequeños
                             this.guardarRespuestasEnLotes(encuestaId, encuesta.respuestas, mapaPreguntas)
                                 .then(function() {
-                                    console.log(`Respuestas de encuesta ${encuestaId} guardadas exitosamente`);
                                     resolve();
                                 })
                                 .catch(reject);
@@ -659,14 +648,12 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                     return;
                 }
                 
-                // Procesar respuestas en lotes de 20
                 const LOTE_SIZE = 20;
                 let indiceActual = 0;
                 let respuestasGuardadas = 0;
                 
                 const procesarSiguienteLote = function() {
                     if (indiceActual >= respuestas.length) {
-                        console.log(`Total respuestas guardadas: ${respuestasGuardadas}/${respuestas.length}`);
                         resolve();
                         return;
                     }
@@ -703,8 +690,7 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                                         resolveRespuesta();
                                     })
                                     .catch((error) => {
-                                        console.error('Error guardando respuesta:', error);
-                                        resolveRespuesta(); // Continuar aunque falle
+                                        resolveRespuesta();
                                     });
                                 
                             }.bind(this));
@@ -713,7 +699,6 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                     
                     Promise.all(promesasLote).then(() => {
                         indiceActual = loteFin;
-                        // Pequeña pausa entre lotes de respuestas
                         setTimeout(() => procesarSiguienteLote(), 100);
                     }).catch(() => {
                         indiceActual = loteFin;
@@ -770,7 +755,6 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                                         oficinaTeamId: oficinaTeamId
                                     });
                                 }).catch(function(error) {
-                                    console.error('Error cargando usuario completo:', error);
                                     resolve({
                                         id: usuarioEncontrado.id,
                                         name: usuarioEncontrado.get('name'),
@@ -801,7 +785,6 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
                             resolve(null);
                         }
                     }.bind(this)).catch(function(error) {
-                        console.error('Error en búsqueda de usuario:', error);
                         resolve(null);
                     });
                 }.bind(this));

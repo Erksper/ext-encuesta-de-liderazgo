@@ -21,7 +21,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         setup: function () {
             this.esAdmin = this.getUser().isAdmin();
             
-            // Leer query parameters
             this.filtrosDesdeUrl = this.parseQueryParams();
 
             this.state = {
@@ -81,7 +80,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 filtros.usuario = params.get('usuario');
             }
             
-            console.log('Query params parsed:', filtros);
             return filtros;
         },
 
@@ -147,10 +145,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
 
         inicializarFiltros: function () {
             if (this.filtrosDesdeUrl.anio) {
-                console.log('Hay filtros desde URL, iniciando carga inteligente');
                 this.cargaInteligenteConFiltros();
             } else {
-                // Carga normal sin filtros
                 setTimeout(function() {
                     this.habilitarEventosFiltros();
                 }.bind(this), 500);
@@ -158,15 +154,11 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
 
         cargaInteligenteConFiltros: function() {
-            console.log('Iniciando carga inteligente con filtros:', this.filtrosDesdeUrl);
-            
-            // Aplicar filtros al state inmediatamente
             this.state.fechaSeleccionada = this.filtrosDesdeUrl.anio;
             this.state.claSeleccionado = this.filtrosDesdeUrl.cla;
             this.state.oficinaSeleccionada = this.filtrosDesdeUrl.oficina;
             this.state.usuarioSeleccionado = this.filtrosDesdeUrl.usuario;
             
-            // Cargar años disponibles
             this.fetchAniosDisponibles().then(function(anios) {
                 var fechaSelect = this.$el.find('#fecha-select');
                 fechaSelect.html('<option value="">Seleccione un año</option>');
@@ -199,12 +191,10 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     this.$el.find('#sugerencias-card').show();
                     this.cargarSugerencias();
                 }
-                console.log('Filtros aplicados, cargando datos...');
                 this.cargarDatos();
                 this.habilitarEventosFiltros();
                 
             }.bind(this)).catch(function(error) {
-                console.error('Error en carga inteligente:', error);
                 this.mostrarNoData();
             }.bind(this));
         },
@@ -309,7 +299,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             this.fetchAniosDisponibles().then(function(anios) {
                 var fechaSelect = this.$el.find('#fecha-select');
                 
-                // ✅ SOLO llenar opciones si NO hay filtros desde URL
                 if (!this.filtrosDesdeUrl.anio) {
                     fechaSelect.html('<option value="">Seleccione un año</option>');
                     
@@ -317,7 +306,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         fechaSelect.append(`<option value="${anio}">${anio}</option>`);
                     });
                 } else {
-                    // Si hay filtros, solo agregar opciones sin cambiar el valor actual
                     var valorActual = fechaSelect.val();
                     fechaSelect.html('<option value="">Seleccione un año</option>');
                     
@@ -325,7 +313,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         fechaSelect.append(`<option value="${anio}">${anio}</option>`);
                     });
                     
-                    // Restaurar el valor
                     if (valorActual) {
                         fechaSelect.val(valorActual);
                     }
@@ -336,7 +323,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             }.bind(this));
         },
 
-        // ... (las funciones fetch y demás se mantienen igual)
         fetchAniosDisponibles: function () {
             return new Promise(function (resolve, reject) {
                 this.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
@@ -577,7 +563,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.state.cargandoDatos = false;
                 
             }.bind(this)).catch(function (error) {
-                console.error('Error al cargar los datos:', error);
                 Espo.Ui.error('Error al cargar los datos');
                 this.mostrarNoData();
                 this.state.cargandoDatos = false;
@@ -848,8 +833,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     return;
                 }
                 
-                console.log('Iniciando carga optimizada de respuestas para', encuestaIds.length, 'encuestas');
-                
                 var maxSize = 200;
                 var allRespuestas = [];
                 
@@ -865,8 +848,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         var startIdx = batchIndex * batchSize;
                         var endIdx = Math.min(startIdx + batchSize, encuestaIds.length);
                         var batchEncuestaIds = encuestaIds.slice(startIdx, endIdx);
-                        
-                        console.log('Procesando lote', batchIndex + 1, 'de', totalBatches, '- Encuestas:', batchEncuestaIds.length);
                         
                         var batchRespuestas = [];
                         
@@ -890,15 +871,12 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                     
                                     batchRespuestas = batchRespuestas.concat(respuestasFiltradas);
                                     
-                                    console.log('Lote', batchIndex + 1, 'offset', offset, '- Respuestas:', respuestasFiltradas.length, 'Acumulado del lote:', batchRespuestas.length);
-                                    
                                     if (models.length === maxSize && (offset + maxSize) < collection.total) {
                                         fetchPage(offset + maxSize);
                                     } else {
                                         resolveBatch(batchRespuestas);
                                     }
                                 }.bind(this)).catch(function(error) {
-                                    console.error('Error en lote', batchIndex + 1, 'offset', offset, ':', error);
                                     rejectBatch(error);
                                 });
                             }.bind(this));
@@ -917,7 +895,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     }
                     
                     if (promises.length === 0) {
-                        console.log('Carga completa de respuestas. Total:', allRespuestas.length);
                         resolve(allRespuestas);
                         return;
                     }
@@ -928,16 +905,13 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         });
                         
                         batchesCompleted += promises.length;
-                        console.log('Progreso:', batchesCompleted, 'de', totalBatches, 'lotes completados. Total respuestas:', allRespuestas.length);
                         
                         if (currentBatchIndex < totalBatches) {
                             processNextBatches();
                         } else {
-                            console.log('Carga completa de respuestas. Total:', allRespuestas.length);
                             resolve(allRespuestas);
                         }
                     }).catch(function(error) {
-                        console.error('Error procesando lotes en paralelo:', error);
                         reject(error);
                     });
                 };
@@ -1234,7 +1208,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     
                     var totalValores = Object.values(conteo).reduce((a, b) => a + b, 0);
                     if (totalValores === 0) {
-                        console.warn('No hay datos para la categoría:', categoria.name);
                         return;
                     }
                     
@@ -1358,7 +1331,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             }
             
             if (!categoriaId) {
-                console.error('No se pudo determinar el ID de la categoría:', categoriaIdOrName);
                 return;
             }
             

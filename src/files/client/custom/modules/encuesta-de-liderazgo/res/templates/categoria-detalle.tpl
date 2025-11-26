@@ -2,16 +2,17 @@
     <div class="reporte-header">
         <div class="header-content">
             <div class="header-title">
-                <button id="btn-volver" class="btn btn-default btn-volver" style="margin-bottom: 15px;">
-                    <i class="fas fa-arrow-left"></i> Volver
-                </button>
                 <h2 id="categoria-nombre-titulo">Cargando...</h2>
                 <p>Análisis detallado por pregunta</p>
-            </div>
+            <button id="btn-volver" class="btn btn-default btn-volver" style="margin-bottom: 15px;">
+                    <i class="fas fa-arrow-left"></i> Volver
+            </button>
+            </div>            
             <!-- Texto específico por categoría -->
             <div id="texto-categoria-especifica" class="texto-categoria-especifica" style="display: none;">
                 <p id="texto-categoria"></p>
             </div>
+            
         </div>
     </div>
 
@@ -84,6 +85,7 @@
 .btn-volver {
     display: inline-flex;
     align-items: center;
+    margin-top: 30px;
     gap: 8px;
     padding: 8px 16px;
     background: rgba(255,255,255,0.2);

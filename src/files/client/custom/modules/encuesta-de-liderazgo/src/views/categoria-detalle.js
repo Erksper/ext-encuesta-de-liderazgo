@@ -21,7 +21,6 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         setup: function () {
             this.categoriaId = this.options.categoriaId || '';
             this.filtros = this.parseFiltros(this.options.filtros || '');
-            console.log(this.filtros)
             this.textosCategorias = {
                 'Comunicación': 'Esta competencia se refiere a las habilidades del líder para transmitir su mensaje y que el mismo llegue a sus interlocutores; sea internalizado, practicado y apropiado. Dentro de ésta competencia tenemos indicadores que nos pueden guiar sobre si existe o no en la práctica del líder: escucha activa, uso de preguntas poderosas, feedback generativo, conversaciones productivas, comunicación asertiva, coordinación de acciones, negociación.',
                 'Trabajo en equipo': 'Esta competencia se refiere a la capacidad del líder de formar equipos de trabajo de alto desempeño. Cohesionados, respetando las individualidades pero siempre guiando al bien común. Los indicadores de cumplimiento de ésta competencia son: colaboración y cooperación, persuasión, reconocimiento del otro, relaciones interpersonales, transmisión de conocimientos, delegación, manejo del conflicto.',
@@ -98,18 +97,14 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         },
         
         cargarDatos: function () {
-            console.log('Iniciando carga de datos para categoría ID:', this.categoriaId);
-            
             this.fetchCategoriaById(this.categoriaId)
                 .then(function (categoria) {
                     if (!categoria) {
-                        console.error('Categoría no encontrada con ID:', this.categoriaId);
                         Espo.Ui.error('Categoría no encontrada con ID: ' + this.categoriaId);
                         this.mostrarNoData();
                         return Promise.reject('Categoría no encontrada');
                     }
                     
-                    console.log('Categoría encontrada:', categoria.name);
                     this.$el.find('#categoria-nombre-titulo').text(categoria.name);
                     this.configurarTextoCategoria(categoria.name);
                     
@@ -122,11 +117,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     var encuestas = resultados[0];
                     var preguntas = resultados[1];
                     
-                    console.log('Encuestas encontradas:', encuestas.length);
-                    console.log('Preguntas encontradas:', preguntas.length);
-                    
                     if (encuestas.length === 0 || preguntas.length === 0) {
-                        console.log('No hay datos: encuestas o preguntas vacías');
                         this.mostrarNoData();
                         return Promise.reject('No hay datos');
                     }
@@ -137,10 +128,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     );
                 }.bind(this))
                 .then(function (respuestas) {
-                    console.log('Respuestas encontradas:', respuestas.length);
-                    
                     if (respuestas.length === 0) {
-                        console.log('No hay respuestas para mostrar');
                         this.mostrarNoData();
                         return;
                     }
@@ -151,7 +139,6 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     
                 }.bind(this))
                 .catch(function (error) {
-                    console.error('Error en cargarDatos:', error);
                     if (error !== 'Categoría no encontrada' && error !== 'No hay datos') {
                         Espo.Ui.error('Error al cargar los datos de la categoría: ' + error);
                     }
@@ -260,7 +247,6 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     });
                 }
                 
-                // Implementar paginación completa
                 const maxSize = 200;
                 let allEncuestas = [];
                 
@@ -283,17 +269,12 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                             
                             allEncuestas = allEncuestas.concat(encuestas);
                             
-                            console.log('Página cargada. Offset:', offset, 'Encuestas en esta página:', models.length, 'Total acumulado:', allEncuestas.length);
-                            
-                            // Continuar si hay más datos
                             if (models.length === maxSize && allEncuestas.length < collection.total) {
                                 fetchPage(offset + maxSize);
                             } else {
-                                console.log('Carga completa. Total encuestas:', allEncuestas.length);
                                 resolve(allEncuestas);
                             }
                         }).catch(function(error) {
-                            console.error('Error fetching encuestas página', offset, ':', error);
                             reject(error);
                         });
                     });
@@ -311,19 +292,15 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     return;
                 }
                 
-                console.log('Iniciando carga de respuestas para', encuestaIds.length, 'encuestas y', preguntaIds.length, 'preguntas');
-                
                 const maxSize = 200;
                 let allRespuestas = [];
                 
-                // Procesar en lotes de 50 encuestas para evitar URLs muy largas
                 const batchSize = 50;
                 let currentBatch = 0;
                 const totalBatches = Math.ceil(encuestaIds.length / batchSize);
                 
                 const processBatch = function () {
                     if (currentBatch >= totalBatches) {
-                        console.log('Carga completa de respuestas. Total:', allRespuestas.length);
                         resolve(allRespuestas);
                         return;
                     }
@@ -332,9 +309,6 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     const endIdx = Math.min(startIdx + batchSize, encuestaIds.length);
                     const batchEncuestaIds = encuestaIds.slice(startIdx, endIdx);
                     
-                    console.log('Procesando lote', currentBatch + 1, 'de', totalBatches, '- Encuestas:', batchEncuestaIds.length);
-                    
-                    // Paginar dentro de cada lote
                     const fetchPage = function (offset) {
                         self.getCollectionFactory().create('EncuestaLiderazgoRespuesta', function (collection) {
                             collection.maxSize = maxSize;
@@ -358,18 +332,13 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                                 
                                 allRespuestas = allRespuestas.concat(respuestasFiltradas);
                                 
-                                console.log('Lote', currentBatch + 1, 'página offset', offset, '- Respuestas:', respuestasFiltradas.length, 'Total acumulado:', allRespuestas.length);
-                                
-                                // Continuar paginando si hay más datos en este lote
                                 if (models.length === maxSize && (offset + maxSize) < collection.total) {
                                     fetchPage(offset + maxSize);
                                 } else {
-                                    // Pasar al siguiente lote
                                     currentBatch++;
                                     processBatch();
                                 }
                             }).catch(function(error) {
-                                console.error('Error fetching respuestas lote', currentBatch, 'offset', offset, ':', error);
                                 reject(error);
                             });
                         });
@@ -386,7 +355,6 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             var container = this.$el.find('.gauge-wrapper');
             var ctx = document.getElementById('gauge-general');
             if (!ctx) {
-                console.warn('No se encontró el elemento canvas gauge-general');
                 return;
             }
             
@@ -405,22 +373,17 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                 }
             });
             
-            // VALIDACIÓN CRÍTICA: Si no hay respuestas, mostrar mensaje y salir
             if (totalRespuestas === 0) {
-                console.warn('No hay respuestas para generar el gauge');
                 this.$el.find('#total-respuestas').text('0');
                 this.$el.find('#promedio-general').text('0.00/10');
                 
-                // Destruir chart anterior si existe
                 if (this.gaugeChart) {
                     this.gaugeChart.destroy();
                     this.gaugeChart = null;
                 }
                 
-                // Limpiar labels anteriores
                 container.find('.chart-labels').remove();
                 
-                // Mostrar mensaje en el canvas
                 var canvasCtx = ctx.getContext('2d');
                 canvasCtx.clearRect(0, 0, ctx.width, ctx.height);
                 canvasCtx.fillStyle = '#999';
@@ -446,7 +409,6 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             container.find('.chart-labels').remove();
             
             if (typeof Chart === 'undefined') {
-                console.error('Chart.js no está cargado');
                 return;
             }
             
@@ -469,7 +431,6 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                 this.COLORES['4']
             ];
             
-            // VALIDACIÓN: Asegurar que data tenga valores válidos
             var dataValida = data.map(val => {
                 var numVal = parseInt(val) || 0;
                 return numVal >= 0 ? numVal : 0;
@@ -514,9 +475,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                         afterDraw: function(chart) {
                             if (totalRespuestas === 0) return;
                             
-                            // VALIDACIÓN: Verificar que chart y chartArea existen
                             if (!chart || !chart.chartArea) {
-                                console.warn('Chart o chartArea no está disponible');
                                 return;
                             }
                             
@@ -601,10 +560,8 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     }]
                 });
             } catch (error) {
-                console.error('Error al crear el gráfico gauge:', error);
                 Espo.Ui.error('Error al generar el gráfico de distribución');
                 
-                // Limpiar en caso de error
                 if (this.gaugeChart) {
                     this.gaugeChart.destroy();
                     this.gaugeChart = null;
@@ -691,7 +648,6 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         },
 
         volverAEvaluacionGeneral: function() {
-            // Usar query parameters
             var queryParams = [];
             
             if (this.filtros.anio) queryParams.push('anio=' + encodeURIComponent(this.filtros.anio));
@@ -702,7 +658,6 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             var queryString = queryParams.length > 0 ? '?' + queryParams.join('&') : '';
             var ruta = '#Liderazgo' + queryString;
             
-            console.log('Navegando a:', ruta);
             this.getRouter().navigate(ruta, {trigger: true});
         }
     });
