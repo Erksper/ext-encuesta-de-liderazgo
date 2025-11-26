@@ -146,22 +146,11 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
 
         inicializarFiltros: function () {
-            var fechaSelect = this.$el.find('#fecha-select');
-            var claSelect = this.$el.find('#cla-select');
-            var oficinaSelect = this.$el.find('#oficina-select');
-            var usuarioSelect = this.$el.find('#usuario-select');
-            
-            // Deshabilitar temporalmente los eventos durante la carga inicial
-            fechaSelect.off('change');
-            claSelect.off('change');
-            oficinaSelect.off('change');
-            usuarioSelect.off('change');
-            
-            // Si hay filtros desde URL, aplicar carga inteligente
             if (this.filtrosDesdeUrl.anio) {
+                console.log('Hay filtros desde URL, iniciando carga inteligente');
                 this.cargaInteligenteConFiltros();
             } else {
-                // Si no hay filtros, habilitar eventos normales
+                // Carga normal sin filtros
                 setTimeout(function() {
                     this.habilitarEventosFiltros();
                 }.bind(this), 500);
@@ -171,195 +160,52 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         cargaInteligenteConFiltros: function() {
             console.log('Iniciando carga inteligente con filtros:', this.filtrosDesdeUrl);
             
-            // Aplicar filtros al state
+            // Aplicar filtros al state inmediatamente
             this.state.fechaSeleccionada = this.filtrosDesdeUrl.anio;
             this.state.claSeleccionado = this.filtrosDesdeUrl.cla;
             this.state.oficinaSeleccionada = this.filtrosDesdeUrl.oficina;
             this.state.usuarioSeleccionado = this.filtrosDesdeUrl.usuario;
             
-            // Cargar desde el nivel más específico al más general
-            this.cargarDesdeUsuarioHaciaArriba();
-        },
-
-        cargarDesdeUsuarioHaciaArriba: function() {
-            if (this.state.usuarioSeleccionado) {
-                // Si hay usuario, cargar desde usuario -> oficina -> CLA -> año
-                this.cargarUsuarioEspecifico().then(function() {
-                    return this.cargarOficinaDesdeUsuario();
-                }.bind(this)).then(function() {
-                    return this.cargarCLADesdeOficina();
-                }.bind(this)).then(function() {
-                    return this.establecerAnio();
-                }.bind(this)).then(function() {
-                    this.cargarDatos();
-                    this.habilitarEventosFiltros();
-                }.bind(this)).catch(function(error) {
-                    console.error('Error en carga inteligente:', error);
-                    this.habilitarEventosFiltros();
-                }.bind(this));
-            } else if (this.state.oficinaSeleccionada) {
-                // Si hay oficina pero no usuario
-                this.cargarOficinaEspecifica().then(function() {
-                    return this.cargarCLADesdeOficina();
-                }.bind(this)).then(function() {
-                    return this.establecerAnio();
-                }.bind(this)).then(function() {
-                    this.cargarDatos();
-                    this.habilitarEventosFiltros();
-                }.bind(this));
-            } else if (this.state.claSeleccionado) {
-                // Si hay CLA pero no oficina ni usuario
-                this.cargarCLAEspecifico().then(function() {
-                    return this.establecerAnio();
-                }.bind(this)).then(function() {
-                    this.cargarDatos();
-                    this.habilitarEventosFiltros();
-                }.bind(this));
-            } else {
-                // Solo año seleccionado
-                this.establecerAnio().then(function() {
-                    this.cargarDatos();
-                    this.habilitarEventosFiltros();
-                }.bind(this));
-            }
-        },
-
-        cargarUsuarioEspecifico: function() {
-            return new Promise(function(resolve) {
-                if (!this.state.usuarioSeleccionado) {
-                    resolve();
-                    return;
-                }
-                
-                // Cargar información del usuario específico
-                this.getModelFactory().create('User', function(userModel) {
-                    userModel.id = this.state.usuarioSeleccionado;
-                    userModel.fetch().then(function() {
-                        var usuarioSelect = this.$el.find('#usuario-select');
-                        usuarioSelect.html(`<option value="${userModel.id}">${userModel.get('name')}</option>`);
-                        resolve();
-                    }.bind(this)).catch(function() {
-                        resolve();
-                    });
-                }.bind(this));
-            }.bind(this));
-        },
-
-        cargarOficinaDesdeUsuario: function() {
-            return new Promise(function(resolve) {
-                if (!this.state.usuarioSeleccionado || !this.state.oficinaSeleccionada) {
-                    resolve();
-                    return;
-                }
-                
-                // Cargar oficina basada en el usuario
-                this.fetchAllTeams().then(function(teams) {
-                    var oficina = teams.find(t => t.id === this.state.oficinaSeleccionada);
-                    var oficinaSelect = this.$el.find('#oficina-select');
-                    
-                    if (oficina) {
-                        oficinaSelect.html(`<option value="${oficina.id}">${oficina.name || oficina.id}</option>`);
-                    }
-                    resolve();
-                }.bind(this));
-            }.bind(this));
-        },
-
-        cargarOficinaEspecifica: function() {
-            return new Promise(function(resolve) {
-                if (!this.state.oficinaSeleccionada) {
-                    resolve();
-                    return;
-                }
-                
-                // Cargar oficina específica
-                this.fetchAllTeams().then(function(teams) {
-                    var oficina = teams.find(t => t.id === this.state.oficinaSeleccionada);
-                    var oficinaSelect = this.$el.find('#oficina-select');
-                    
-                    if (oficina) {
-                        oficinaSelect.html(`<option value="${oficina.id}">${oficina.name || oficina.id}</option>`);
-                        
-                        // Cargar usuarios de esta oficina
-                        this.cargarUsuariosPorOficina(this.state.oficinaSeleccionada);
-                    }
-                    resolve();
-                }.bind(this));
-            }.bind(this));
-        },
-
-        cargarCLADesdeOficina: function() {
-            return new Promise(function(resolve) {
-                if (!this.state.claSeleccionado) {
-                    resolve();
-                    return;
-                }
-                
-                // Cargar CLA basado en la oficina/usuario
-                this.fetchAllTeams().then(function(teams) {
-                    var cla = teams.find(t => t.id === this.state.claSeleccionado);
-                    var claSelect = this.$el.find('#cla-select');
-                    
-                    if (cla) {
-                        if (this.state.claSeleccionado === 'CLA0') {
-                            claSelect.html('<option value="CLA0">Territorio Nacional</option>');
-                        } else {
-                            claSelect.html(`<option value="${cla.id}">${cla.name || cla.id}</option>`);
-                        }
-                        
-                        // Cargar oficinas de este CLA si no hay oficina específica
-                        if (!this.state.oficinaSeleccionada) {
-                            this.cargarOficinasPorCLA(this.state.claSeleccionado);
-                        }
-                    }
-                    resolve();
-                }.bind(this));
-            }.bind(this));
-        },
-
-        cargarCLAEspecifico: function() {
-            return new Promise(function(resolve) {
-                if (!this.state.claSeleccionado) {
-                    resolve();
-                    return;
-                }
-                
-                // Cargar CLA específico
-                this.fetchAllTeams().then(function(teams) {
-                    var cla = teams.find(t => t.id === this.state.claSeleccionado);
-                    var claSelect = this.$el.find('#cla-select');
-                    
-                    if (cla) {
-                        if (this.state.claSeleccionado === 'CLA0') {
-                            claSelect.html('<option value="CLA0">Territorio Nacional</option>');
-                        } else {
-                            claSelect.html(`<option value="${cla.id}">${cla.name || cla.id}</option>`);
-                        }
-                        
-                        // Cargar oficinas de este CLA
-                        this.cargarOficinasPorCLA(this.state.claSeleccionado);
-                    }
-                    resolve();
-                }.bind(this));
-            }.bind(this));
-        },
-
-        establecerAnio: function() {
-            return new Promise(function(resolve) {
+            // Cargar años disponibles
+            this.fetchAniosDisponibles().then(function(anios) {
                 var fechaSelect = this.$el.find('#fecha-select');
-                if (fechaSelect.length && this.state.fechaSeleccionada) {
-                    fechaSelect.val(this.state.fechaSeleccionada);
-                    
-                    // Cargar CLAs basados en el año si no hay CLA específico
-                    if (!this.state.claSeleccionado) {
-                        if (this.state.esCasaNacional) {
-                            this.cargarTodosCLAs();
-                        } else {
-                            this.cargarCLAsUsuario();
-                        }
-                    }
+                fechaSelect.html('<option value="">Seleccione un año</option>');
+                anios.sort((a, b) => b - a).forEach(function(anio) {
+                    fechaSelect.append(`<option value="${anio}">${anio}</option>`);
+                });
+                fechaSelect.val(this.state.fechaSeleccionada);
+                this.$el.find('#cla-select').prop('disabled', false);
+                if (this.state.esCasaNacional) {
+                    return this.cargarTodosCLAs();
+                } else {
+                    return this.cargarCLAsUsuario();
                 }
-                resolve();
+            }.bind(this)).then(function() {
+                var claSelect = this.$el.find('#cla-select');
+                claSelect.val(this.state.claSeleccionado);
+                if (this.state.claSeleccionado && this.state.claSeleccionado !== 'CLA0') {
+                    return this.cargarOficinasPorCLA(this.state.claSeleccionado);
+                }
+            }.bind(this)).then(function() {
+                if (this.state.oficinaSeleccionada) {
+                    var oficinaSelect = this.$el.find('#oficina-select');
+                    oficinaSelect.val(this.state.oficinaSeleccionada);
+                    return this.cargarUsuariosPorOficina(this.state.oficinaSeleccionada);
+                }
+            }.bind(this)).then(function() {
+                if (this.state.usuarioSeleccionado) {
+                    var usuarioSelect = this.$el.find('#usuario-select');
+                    usuarioSelect.val(this.state.usuarioSeleccionado);
+                    this.$el.find('#sugerencias-card').show();
+                    this.cargarSugerencias();
+                }
+                console.log('Filtros aplicados, cargando datos...');
+                this.cargarDatos();
+                this.habilitarEventosFiltros();
+                
+            }.bind(this)).catch(function(error) {
+                console.error('Error en carga inteligente:', error);
+                this.mostrarNoData();
             }.bind(this));
         },
 
@@ -384,13 +230,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 if (this.state.fechaSeleccionada) {
                     claSelect.html('<option value="">Cargando CLAs...</option>');
                     if (this.state.esCasaNacional) {
-                        this.cargarTodosCLAs().then(function() {
-                            this.cargarDatos();
-                        }.bind(this));
+                        this.cargarTodosCLAs();
                     } else {
-                        this.cargarCLAsUsuario().then(function() {
-                            this.cargarDatos();
-                        }.bind(this));
+                        this.cargarCLAsUsuario();
                     }
                 } else {
                     claSelect.html('<option value="">Seleccione un año</option>');
@@ -406,6 +248,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.state.claSeleccionado = valor;
                 this.state.oficinaSeleccionada = null;
                 this.state.usuarioSeleccionado = null;
+
+                this.$el.find('#sugerencias-card').hide();
                 
                 oficinaSelect.html('<option value="">Cargando...</option>');
                 usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
@@ -431,6 +275,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 
                 this.state.oficinaSeleccionada = valor;
                 this.state.usuarioSeleccionado = null;
+
+                this.$el.find('#sugerencias-card').hide();
                 
                 if (this.state.oficinaSeleccionada) {
                     this.cargarUsuariosPorOficina(this.state.oficinaSeleccionada).then(function() {
@@ -462,16 +308,29 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         cargarAniosDisponibles: function () {
             this.fetchAniosDisponibles().then(function(anios) {
                 var fechaSelect = this.$el.find('#fecha-select');
-                fechaSelect.html('<option value="">Seleccione un año</option>');
                 
-                anios.sort((a, b) => b - a).forEach(function(anio) {
-                    fechaSelect.append(`<option value="${anio}">${anio}</option>`);
-                });
-                
-                // Si no hay filtros desde URL, habilitar eventos
+                // ✅ SOLO llenar opciones si NO hay filtros desde URL
                 if (!this.filtrosDesdeUrl.anio) {
-                    this.habilitarEventosFiltros();
+                    fechaSelect.html('<option value="">Seleccione un año</option>');
+                    
+                    anios.sort((a, b) => b - a).forEach(function(anio) {
+                        fechaSelect.append(`<option value="${anio}">${anio}</option>`);
+                    });
+                } else {
+                    // Si hay filtros, solo agregar opciones sin cambiar el valor actual
+                    var valorActual = fechaSelect.val();
+                    fechaSelect.html('<option value="">Seleccione un año</option>');
+                    
+                    anios.sort((a, b) => b - a).forEach(function(anio) {
+                        fechaSelect.append(`<option value="${anio}">${anio}</option>`);
+                    });
+                    
+                    // Restaurar el valor
+                    if (valorActual) {
+                        fechaSelect.val(valorActual);
+                    }
                 }
+                
             }.bind(this)).catch(function(error) {
                 this.$el.find('#fecha-select').html('<option value="">Error al cargar</option>');
             }.bind(this));
@@ -725,7 +584,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             }.bind(this));
         },
         
-        // ... (resto de las funciones fetch se mantienen igual)
         fetchAllTeams: function () {
             return new Promise(function (resolve, reject) {
                 var maxSize = 200;
