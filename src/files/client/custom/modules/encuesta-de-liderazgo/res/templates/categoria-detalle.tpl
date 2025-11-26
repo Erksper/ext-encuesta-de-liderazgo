@@ -2,6 +2,9 @@
     <div class="reporte-header">
         <div class="header-content">
             <div class="header-title">
+                <button id="btn-volver" class="btn btn-default btn-volver" style="margin-bottom: 15px;">
+                    <i class="fas fa-arrow-left"></i> Volver
+                </button>
                 <h2 id="categoria-nombre-titulo">Cargando...</h2>
                 <p>Análisis detallado por pregunta</p>
             </div>
@@ -78,6 +81,29 @@
 </div>
 
 <style>
+.btn-volver {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+.btn-volver:hover {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.5);
+    color: white;
+    transform: translateX(-3px);
+}
+
+.btn-volver i {
+    font-size: 14px;
+}
+
 .reporte-categoria-container {
     background: white;
     border-radius: 8px;
@@ -339,15 +365,15 @@
 .chart-label {
     position: absolute;
     background: white;
-    padding: 8px 12px; /* Aumentado de 4px 8px */
-    border-radius: 6px; /* Aumentado de 4px */
+    padding: 8px 12px;
+    border-radius: 6px;
     border: 2px solid;
-    font-size: 13px; /* Aumentado de 11px */
+    font-size: 13px;
     font-weight: bold;
     color: #333;
     white-space: nowrap;
     z-index: 10;
-    min-width: 90px; /* Aumentado de 70px */
+    min-width: 90px;
     text-align: center;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
@@ -362,9 +388,9 @@
 
 .chart-label-value {
     display: block;
-    font-size: 12px; /* Aumentado de 10px */
+    font-size: 12px;
     color: #666;
-    margin-top: 2px; /* Aumentado de 1px */
+    margin-top: 2px;
     font-weight: normal;
 }
 

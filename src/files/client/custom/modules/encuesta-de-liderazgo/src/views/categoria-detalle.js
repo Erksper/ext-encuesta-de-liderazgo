@@ -21,7 +21,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         setup: function () {
             this.categoriaId = this.options.categoriaId || '';
             this.filtros = this.parseFiltros(this.options.filtros || '');
-            
+            console.log(this.filtros)
             this.textosCategorias = {
                 'Comunicación': 'Esta competencia se refiere a las habilidades del líder para transmitir su mensaje y que el mismo llegue a sus interlocutores; sea internalizado, practicado y apropiado. Dentro de ésta competencia tenemos indicadores que nos pueden guiar sobre si existe o no en la práctica del líder: escucha activa, uso de preguntas poderosas, feedback generativo, conversaciones productivas, comunicación asertiva, coordinación de acciones, negociación.',
                 'Trabajo en equipo': 'Esta competencia se refiere a la capacidad del líder de formar equipos de trabajo de alto desempeño. Cohesionados, respetando las individualidades pero siempre guiando al bien común. Los indicadores de cumplimiento de ésta competencia son: colaboración y cooperación, persuasión, reconocimiento del otro, relaciones interpersonales, transmisión de conocimientos, delegación, manejo del conflicto.',
@@ -67,6 +67,9 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         afterRender: function () {
             this.mostrarLoadingInicial();
             this.iniciarCargaDatos();
+            this.$el.find('#btn-volver').on('click', function() {
+                this.volverAEvaluacionGeneral();
+            }.bind(this));
         },
 
         mostrarLoadingInicial: function () {
@@ -685,7 +688,22 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             this.$el.find('#content-area').hide();
             this.$el.find('#no-data-area').show();
             this.$el.find('#no-data-area p').text(mensaje || 'Error al cargar los datos');
+        },
+
+        volverAEvaluacionGeneral: function() {
+            // Usar query parameters
+            var queryParams = [];
+            
+            if (this.filtros.anio) queryParams.push('anio=' + encodeURIComponent(this.filtros.anio));
+            if (this.filtros.cla) queryParams.push('cla=' + encodeURIComponent(this.filtros.cla));
+            if (this.filtros.oficina) queryParams.push('oficina=' + encodeURIComponent(this.filtros.oficina));
+            if (this.filtros.usuario) queryParams.push('usuario=' + encodeURIComponent(this.filtros.usuario));
+            
+            var queryString = queryParams.length > 0 ? '?' + queryParams.join('&') : '';
+            var ruta = '#Liderazgo' + queryString;
+            
+            console.log('Navegando a:', ruta);
+            this.getRouter().navigate(ruta, {trigger: true});
         }
-        
     });
 });

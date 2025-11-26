@@ -9,7 +9,7 @@ define('encuesta-de-liderazgo:controllers/liderazgo', ['controllers/base'], func
                 scope: 'Liderazgo'
             });
         },
-        
+              
         actionAdmin: function () {
             if (!this.getUser().isAdmin()) {
                 this.getRouter().navigate('#Liderazgo', {trigger: true});
@@ -44,7 +44,8 @@ define('encuesta-de-liderazgo:controllers/liderazgo', ['controllers/base'], func
                     
                     this.main('encuesta-de-liderazgo:views/categoria-detalle', {
                         categoriaId: categoriaId,
-                        filtros: filtrosString
+                        filtros: filtrosString,
+                        filtrosCompletos: filtrosParam
                     });
                     
                 } else {

@@ -21,6 +21,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         setup: function () {
             this.esAdmin = this.getUser().isAdmin();
             
+            // Leer query parameters
+            this.filtrosDesdeUrl = this.parseQueryParams();
+
             this.state = {
                 usuario: null,
                 esCasaNacional: false,
@@ -57,6 +60,29 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.registrarPluginsChart();
                 this.verificarCargaCompleta();
             }
+        },
+
+        parseQueryParams: function() {
+            var hash = window.location.hash;
+            var filtros = {
+                anio: null,
+                cla: null,
+                oficina: null,
+                usuario: null
+            };
+            
+            if (hash && hash.includes('?')) {
+                var queryString = hash.split('?')[1];
+                var params = new URLSearchParams(queryString);
+                
+                filtros.anio = params.get('anio');
+                filtros.cla = params.get('cla');
+                filtros.oficina = params.get('oficina');
+                filtros.usuario = params.get('usuario');
+            }
+            
+            console.log('Query params parsed:', filtros);
+            return filtros;
         },
 
         registrarPluginsChart: function() {
@@ -103,7 +129,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             };
             Chart.register(barLabelsPlugin);
         },
-        
+
         data: function () {
             return {
                 esAdmin: this.esAdmin
@@ -119,19 +145,339 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             }.bind(this), 100);
         },
 
+        inicializarFiltros: function () {
+            var fechaSelect = this.$el.find('#fecha-select');
+            var claSelect = this.$el.find('#cla-select');
+            var oficinaSelect = this.$el.find('#oficina-select');
+            var usuarioSelect = this.$el.find('#usuario-select');
+            
+            // Deshabilitar temporalmente los eventos durante la carga inicial
+            fechaSelect.off('change');
+            claSelect.off('change');
+            oficinaSelect.off('change');
+            usuarioSelect.off('change');
+            
+            // Si hay filtros desde URL, aplicar carga inteligente
+            if (this.filtrosDesdeUrl.anio) {
+                this.cargaInteligenteConFiltros();
+            } else {
+                // Si no hay filtros, habilitar eventos normales
+                setTimeout(function() {
+                    this.habilitarEventosFiltros();
+                }.bind(this), 500);
+            }
+        },
+
+        cargaInteligenteConFiltros: function() {
+            console.log('Iniciando carga inteligente con filtros:', this.filtrosDesdeUrl);
+            
+            // Aplicar filtros al state
+            this.state.fechaSeleccionada = this.filtrosDesdeUrl.anio;
+            this.state.claSeleccionado = this.filtrosDesdeUrl.cla;
+            this.state.oficinaSeleccionada = this.filtrosDesdeUrl.oficina;
+            this.state.usuarioSeleccionado = this.filtrosDesdeUrl.usuario;
+            
+            // Cargar desde el nivel más específico al más general
+            this.cargarDesdeUsuarioHaciaArriba();
+        },
+
+        cargarDesdeUsuarioHaciaArriba: function() {
+            if (this.state.usuarioSeleccionado) {
+                // Si hay usuario, cargar desde usuario -> oficina -> CLA -> año
+                this.cargarUsuarioEspecifico().then(function() {
+                    return this.cargarOficinaDesdeUsuario();
+                }.bind(this)).then(function() {
+                    return this.cargarCLADesdeOficina();
+                }.bind(this)).then(function() {
+                    return this.establecerAnio();
+                }.bind(this)).then(function() {
+                    this.cargarDatos();
+                    this.habilitarEventosFiltros();
+                }.bind(this)).catch(function(error) {
+                    console.error('Error en carga inteligente:', error);
+                    this.habilitarEventosFiltros();
+                }.bind(this));
+            } else if (this.state.oficinaSeleccionada) {
+                // Si hay oficina pero no usuario
+                this.cargarOficinaEspecifica().then(function() {
+                    return this.cargarCLADesdeOficina();
+                }.bind(this)).then(function() {
+                    return this.establecerAnio();
+                }.bind(this)).then(function() {
+                    this.cargarDatos();
+                    this.habilitarEventosFiltros();
+                }.bind(this));
+            } else if (this.state.claSeleccionado) {
+                // Si hay CLA pero no oficina ni usuario
+                this.cargarCLAEspecifico().then(function() {
+                    return this.establecerAnio();
+                }.bind(this)).then(function() {
+                    this.cargarDatos();
+                    this.habilitarEventosFiltros();
+                }.bind(this));
+            } else {
+                // Solo año seleccionado
+                this.establecerAnio().then(function() {
+                    this.cargarDatos();
+                    this.habilitarEventosFiltros();
+                }.bind(this));
+            }
+        },
+
+        cargarUsuarioEspecifico: function() {
+            return new Promise(function(resolve) {
+                if (!this.state.usuarioSeleccionado) {
+                    resolve();
+                    return;
+                }
+                
+                // Cargar información del usuario específico
+                this.getModelFactory().create('User', function(userModel) {
+                    userModel.id = this.state.usuarioSeleccionado;
+                    userModel.fetch().then(function() {
+                        var usuarioSelect = this.$el.find('#usuario-select');
+                        usuarioSelect.html(`<option value="${userModel.id}">${userModel.get('name')}</option>`);
+                        resolve();
+                    }.bind(this)).catch(function() {
+                        resolve();
+                    });
+                }.bind(this));
+            }.bind(this));
+        },
+
+        cargarOficinaDesdeUsuario: function() {
+            return new Promise(function(resolve) {
+                if (!this.state.usuarioSeleccionado || !this.state.oficinaSeleccionada) {
+                    resolve();
+                    return;
+                }
+                
+                // Cargar oficina basada en el usuario
+                this.fetchAllTeams().then(function(teams) {
+                    var oficina = teams.find(t => t.id === this.state.oficinaSeleccionada);
+                    var oficinaSelect = this.$el.find('#oficina-select');
+                    
+                    if (oficina) {
+                        oficinaSelect.html(`<option value="${oficina.id}">${oficina.name || oficina.id}</option>`);
+                    }
+                    resolve();
+                }.bind(this));
+            }.bind(this));
+        },
+
+        cargarOficinaEspecifica: function() {
+            return new Promise(function(resolve) {
+                if (!this.state.oficinaSeleccionada) {
+                    resolve();
+                    return;
+                }
+                
+                // Cargar oficina específica
+                this.fetchAllTeams().then(function(teams) {
+                    var oficina = teams.find(t => t.id === this.state.oficinaSeleccionada);
+                    var oficinaSelect = this.$el.find('#oficina-select');
+                    
+                    if (oficina) {
+                        oficinaSelect.html(`<option value="${oficina.id}">${oficina.name || oficina.id}</option>`);
+                        
+                        // Cargar usuarios de esta oficina
+                        this.cargarUsuariosPorOficina(this.state.oficinaSeleccionada);
+                    }
+                    resolve();
+                }.bind(this));
+            }.bind(this));
+        },
+
+        cargarCLADesdeOficina: function() {
+            return new Promise(function(resolve) {
+                if (!this.state.claSeleccionado) {
+                    resolve();
+                    return;
+                }
+                
+                // Cargar CLA basado en la oficina/usuario
+                this.fetchAllTeams().then(function(teams) {
+                    var cla = teams.find(t => t.id === this.state.claSeleccionado);
+                    var claSelect = this.$el.find('#cla-select');
+                    
+                    if (cla) {
+                        if (this.state.claSeleccionado === 'CLA0') {
+                            claSelect.html('<option value="CLA0">Territorio Nacional</option>');
+                        } else {
+                            claSelect.html(`<option value="${cla.id}">${cla.name || cla.id}</option>`);
+                        }
+                        
+                        // Cargar oficinas de este CLA si no hay oficina específica
+                        if (!this.state.oficinaSeleccionada) {
+                            this.cargarOficinasPorCLA(this.state.claSeleccionado);
+                        }
+                    }
+                    resolve();
+                }.bind(this));
+            }.bind(this));
+        },
+
+        cargarCLAEspecifico: function() {
+            return new Promise(function(resolve) {
+                if (!this.state.claSeleccionado) {
+                    resolve();
+                    return;
+                }
+                
+                // Cargar CLA específico
+                this.fetchAllTeams().then(function(teams) {
+                    var cla = teams.find(t => t.id === this.state.claSeleccionado);
+                    var claSelect = this.$el.find('#cla-select');
+                    
+                    if (cla) {
+                        if (this.state.claSeleccionado === 'CLA0') {
+                            claSelect.html('<option value="CLA0">Territorio Nacional</option>');
+                        } else {
+                            claSelect.html(`<option value="${cla.id}">${cla.name || cla.id}</option>`);
+                        }
+                        
+                        // Cargar oficinas de este CLA
+                        this.cargarOficinasPorCLA(this.state.claSeleccionado);
+                    }
+                    resolve();
+                }.bind(this));
+            }.bind(this));
+        },
+
+        establecerAnio: function() {
+            return new Promise(function(resolve) {
+                var fechaSelect = this.$el.find('#fecha-select');
+                if (fechaSelect.length && this.state.fechaSeleccionada) {
+                    fechaSelect.val(this.state.fechaSeleccionada);
+                    
+                    // Cargar CLAs basados en el año si no hay CLA específico
+                    if (!this.state.claSeleccionado) {
+                        if (this.state.esCasaNacional) {
+                            this.cargarTodosCLAs();
+                        } else {
+                            this.cargarCLAsUsuario();
+                        }
+                    }
+                }
+                resolve();
+            }.bind(this));
+        },
+
+        habilitarEventosFiltros: function() {
+            var fechaSelect = this.$el.find('#fecha-select');
+            var claSelect = this.$el.find('#cla-select');
+            var oficinaSelect = this.$el.find('#oficina-select');
+            var usuarioSelect = this.$el.find('#usuario-select');
+            
+            fechaSelect.on('change', function (e) {
+                var valor = $(e.currentTarget).val();
+                
+                this.state.fechaSeleccionada = valor;
+                this.state.claSeleccionado = null;
+                this.state.oficinaSeleccionada = null;
+                this.state.usuarioSeleccionado = null;
+                
+                claSelect.prop('disabled', !this.state.fechaSeleccionada);
+                oficinaSelect.prop('disabled', true);
+                usuarioSelect.prop('disabled', true);
+                
+                if (this.state.fechaSeleccionada) {
+                    claSelect.html('<option value="">Cargando CLAs...</option>');
+                    if (this.state.esCasaNacional) {
+                        this.cargarTodosCLAs().then(function() {
+                            this.cargarDatos();
+                        }.bind(this));
+                    } else {
+                        this.cargarCLAsUsuario().then(function() {
+                            this.cargarDatos();
+                        }.bind(this));
+                    }
+                } else {
+                    claSelect.html('<option value="">Seleccione un año</option>');
+                    oficinaSelect.html('<option value="">Seleccione un CLA primero</option>');
+                    usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
+                    this.mostrarNoData();
+                }
+            }.bind(this));
+            
+            claSelect.on('change', function (e) {
+                var valor = $(e.currentTarget).val();
+                
+                this.state.claSeleccionado = valor;
+                this.state.oficinaSeleccionada = null;
+                this.state.usuarioSeleccionado = null;
+                
+                oficinaSelect.html('<option value="">Cargando...</option>');
+                usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
+                usuarioSelect.prop('disabled', true);
+                
+                if (this.state.claSeleccionado === 'CLA0') {
+                    oficinaSelect.html('<option value="">No disponible para Territorio Nacional</option>');
+                    oficinaSelect.prop('disabled', true);
+                    this.cargarDatos();
+                } else if (this.state.claSeleccionado) {
+                    this.cargarOficinasPorCLA(this.state.claSeleccionado).then(function() {
+                        this.cargarDatos();
+                    }.bind(this));
+                } else {
+                    oficinaSelect.prop('disabled', true);
+                    oficinaSelect.html('<option value="">Seleccione un CLA</option>');
+                    this.mostrarNoData();
+                }
+            }.bind(this));
+            
+            oficinaSelect.on('change', function (e) {
+                var valor = $(e.currentTarget).val();
+                
+                this.state.oficinaSeleccionada = valor;
+                this.state.usuarioSeleccionado = null;
+                
+                if (this.state.oficinaSeleccionada) {
+                    this.cargarUsuariosPorOficina(this.state.oficinaSeleccionada).then(function() {
+                        this.cargarDatos();
+                    }.bind(this));
+                } else {
+                    usuarioSelect.html('<option value="">Seleccione una Oficina</option>');
+                    usuarioSelect.prop('disabled', true);
+                    this.cargarDatos();
+                }
+            }.bind(this));
+            
+            usuarioSelect.on('change', function (e) {
+                var valor = $(e.currentTarget).val();
+                
+                this.state.usuarioSeleccionado = valor;
+                
+                if (this.state.usuarioSeleccionado) {
+                    this.$el.find('#sugerencias-card').show();
+                    this.cargarSugerencias();
+                } else {
+                    this.$el.find('#sugerencias-card').hide();
+                }
+                
+                this.cargarDatos();
+            }.bind(this));
+        },
+
         cargarAniosDisponibles: function () {
             this.fetchAniosDisponibles().then(function(anios) {
                 var fechaSelect = this.$el.find('#fecha-select');
-                fechaSelect.html('<option value="">Todos los años</option>');
+                fechaSelect.html('<option value="">Seleccione un año</option>');
                 
                 anios.sort((a, b) => b - a).forEach(function(anio) {
                     fechaSelect.append(`<option value="${anio}">${anio}</option>`);
                 });
+                
+                // Si no hay filtros desde URL, habilitar eventos
+                if (!this.filtrosDesdeUrl.anio) {
+                    this.habilitarEventosFiltros();
+                }
             }.bind(this)).catch(function(error) {
                 this.$el.find('#fecha-select').html('<option value="">Error al cargar</option>');
             }.bind(this));
         },
 
+        // ... (las funciones fetch y demás se mantienen igual)
         fetchAniosDisponibles: function () {
             return new Promise(function (resolve, reject) {
                 this.getCollectionFactory().create('EncuestaLiderazgo', function (collection) {
@@ -191,153 +537,70 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             }
         },
         
-        inicializarFiltros: function () {
-            var fechaSelect = this.$el.find('#fecha-select');
-            var claSelect = this.$el.find('#cla-select');
-            var oficinaSelect = this.$el.find('#oficina-select');
-            var usuarioSelect = this.$el.find('#usuario-select');
-            
-            fechaSelect.on('change', function (e) {
-                var valor = $(e.currentTarget).val();
-                
-                this.state.fechaSeleccionada = valor;
-                this.state.claSeleccionado = null;
-                this.state.oficinaSeleccionada = null;
-                this.state.usuarioSeleccionado = null;
-                
-                claSelect.prop('disabled', !this.state.fechaSeleccionada);
-                oficinaSelect.prop('disabled', true);
-                usuarioSelect.prop('disabled', true);
-                
-                if (this.state.fechaSeleccionada) {
-                    claSelect.html('<option value="">Cargando CLAs...</option>');
-                    if (this.state.esCasaNacional) {
-                        this.cargarTodosCLAs();
-                    } else {
-                        this.cargarCLAsUsuario();
-                    }
-                } else {
-                    claSelect.html('<option value="">Seleccione un año primero</option>');
-                    oficinaSelect.html('<option value="">Seleccione un CLA primero</option>');
-                    usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
-                    this.mostrarNoData();
-                }
-            }.bind(this));
-            
-            claSelect.on('change', function (e) {
-                var valor = $(e.currentTarget).val();
-                
-                this.state.claSeleccionado = valor;
-                this.state.oficinaSeleccionada = null;
-                this.state.usuarioSeleccionado = null;
-                
-                oficinaSelect.html('<option value="">Cargando...</option>');
-                usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
-                usuarioSelect.prop('disabled', true);
-                
-                if (this.state.claSeleccionado === 'CLA0') {
-                    oficinaSelect.html('<option value="">No disponible para Territorio Nacional</option>');
-                    oficinaSelect.prop('disabled', true);
-                    this.cargarDatos();
-                } else if (this.state.claSeleccionado) {
-                    this.cargarOficinasPorCLA(this.state.claSeleccionado);
-                    this.cargarDatos();
-                } else {
-                    oficinaSelect.prop('disabled', true);
-                    oficinaSelect.html('<option value="">Seleccione un CLA primero</option>');
-                    this.mostrarNoData();
-                }
-            }.bind(this));
-            
-            oficinaSelect.on('change', function (e) {
-                var valor = $(e.currentTarget).val();
-                
-                this.state.oficinaSeleccionada = valor;
-                this.state.usuarioSeleccionado = null;
-                
-                if (this.state.oficinaSeleccionada) {
-                    this.cargarUsuariosPorOficina(this.state.oficinaSeleccionada);
-                    this.cargarDatos();
-                } else {
-                    usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
-                    usuarioSelect.prop('disabled', true);
-                    this.cargarDatos();
-                }
-            }.bind(this));
-            
-            usuarioSelect.on('change', function (e) {
-                var valor = $(e.currentTarget).val();
-                
-                this.state.usuarioSeleccionado = valor;
-                
-                if (this.state.usuarioSeleccionado) {
-                    this.$el.find('#sugerencias-card').show();
-                    this.cargarSugerencias();
-                } else {
-                    this.$el.find('#sugerencias-card').hide();
-                }
-                
-                this.cargarDatos();
-            }.bind(this));
-        },
-        
         cargarTodosCLAs: function () {
-            this.fetchAllTeams().then(function (teams) {
-                var claPattern = /^CLA\d+$/i;
-                var clas = teams.filter(t => claPattern.test(t.id));
-                
-                var claSelect = this.$el.find('#cla-select');
-                claSelect.html('<option value="">Seleccione un CLA</option>');
-                
-                var clasFiltrados = clas.filter(cla => cla.id !== 'CLA0');
-                
-                claSelect.append('<option value="CLA0">Territorio Nacional</option>');
-                
-                clasFiltrados.sort((a, b) => {
-                    var numA = parseInt(a.id.replace(/\D/g, ''));
-                    var numB = parseInt(b.id.replace(/\D/g, ''));
-                    return numA - numB;
-                }).forEach(cla => {
-                    claSelect.append(`<option value="${cla.id}">${cla.name || cla.id}</option>`);
-                });
-                
-            }.bind(this)).catch(function(error) {
-                this.$el.find('#cla-select').html('<option value="">Error al cargar</option>');
+            return new Promise(function (resolve, reject) {
+                this.fetchAllTeams().then(function (teams) {
+                    var claPattern = /^CLA\d+$/i;
+                    var clas = teams.filter(t => claPattern.test(t.id));
+                    
+                    var claSelect = this.$el.find('#cla-select');
+                    claSelect.html('<option value="">Seleccione un CLA</option>');
+                    
+                    var clasFiltrados = clas.filter(cla => cla.id !== 'CLA0');
+                    
+                    claSelect.append('<option value="CLA0">Territorio Nacional</option>');
+                    
+                    clasFiltrados.sort((a, b) => {
+                        var numA = parseInt(a.id.replace(/\D/g, ''));
+                        var numB = parseInt(b.id.replace(/\D/g, ''));
+                        return numA - numB;
+                    }).forEach(cla => {
+                        claSelect.append(`<option value="${cla.id}">${cla.name || cla.id}</option>`);
+                    });
+                    
+                    resolve();
+                    
+                }.bind(this)).catch(function(error) {
+                    this.$el.find('#cla-select').html('<option value="">Error al cargar</option>');
+                    resolve();
+                }.bind(this));
             }.bind(this));
         },
         
         cargarCLAsUsuario: function () {
-            var claSelect = this.$el.find('#cla-select');
-            var oficinaSelect = this.$el.find('#oficina-select');
-            
-            if (!this.state.usuario || !this.state.usuario.teamsIds) {
-                claSelect.html('<option value="">Sin equipos asignados</option>');
-                return;
-            }
-            
-            var teamsIds = this.state.usuario.teamsIds;
-            var claPattern = /^CLA\d+$/i;
-            var claId = teamsIds.find(id => claPattern.test(id));
-            
-            claSelect.html('<option value="">Seleccione un CLA</option>');
-            
-            claSelect.append('<option value="CLA0">Territorio Nacional</option>');
-            
-            if (!this.state.esCasaNacional && claId) {
-                var teamName = this.state.usuario.teamsNames[claId] || claId;
-                claSelect.append(`<option value="${claId}">${teamName}</option>`);
-            } else if (this.state.esCasaNacional) {
-                this.cargarTodosCLAs();
-            }
-            
-            oficinaSelect.html('<option value="">Seleccione un CLA primero</option>');
-            oficinaSelect.prop('disabled', true);
+            return new Promise(function (resolve, reject) {
+                var claSelect = this.$el.find('#cla-select');
+                
+                if (!this.state.usuario || !this.state.usuario.teamsIds) {
+                    claSelect.html('<option value="">Sin equipos asignados</option>');
+                    resolve();
+                    return;
+                }
+                
+                var teamsIds = this.state.usuario.teamsIds;
+                var claPattern = /^CLA\d+$/i;
+                var claId = teamsIds.find(id => claPattern.test(id));
+                
+                claSelect.html('<option value="">Seleccione un CLA</option>');
+                
+                claSelect.append('<option value="CLA0">Territorio Nacional</option>');
+                
+                if (!this.state.esCasaNacional && claId) {
+                    var teamName = this.state.usuario.teamsNames[claId] || claId;
+                    claSelect.append(`<option value="${claId}">${teamName}</option>`);
+                } else if (this.state.esCasaNacional) {
+                    this.cargarTodosCLAs().then(resolve);
+                    return;
+                }
+                
+                resolve();
+            }.bind(this));
         },
         
         cargarOficinasPorCLA: function (claId) {
             var oficinaSelect = this.$el.find('#oficina-select');
             
-            Promise.all([
+            return Promise.all([
                 this.fetchAllTeams(),
                 this.fetchUsuariosPorCLA(claId)
             ]).then(function ([teams, usuariosConCLA]) {
@@ -369,7 +632,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         cargarUsuariosPorOficina: function (oficinaId) {
             var usuarioSelect = this.$el.find('#usuario-select');
             
-            this.fetchEncuestasPorOficina(oficinaId).then(function (encuestas) {
+            return this.fetchEncuestasPorOficina(oficinaId).then(function (encuestas) {
                 var usuariosIds = new Set();
                 encuestas.forEach(enc => {
                     if (enc.usuarioEvaluadoId) {
@@ -403,9 +666,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             this.state.cargandoDatos = true;
             this.mostrarLoading(true);
             
-            // ✅ AQUÍ: Primer indicador de progreso
-            this.mostrarProgresoCarga('Iniciando carga de datos...', 0);
-            
             this.state.encuestas = [];
             this.state.respuestas = [];
             this.state.preguntas = [];
@@ -414,8 +674,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.fetchCategorias(),
                 this.fetchEncuestasFiltradas()
             ]).then(function ([categorias, encuestas]) {
-                // ✅ AQUÍ: Actualizar progreso después de cargar encuestas
-                this.mostrarProgresoCarga('Categorías y encuestas cargadas...', 25);
                 
                 this.state.categorias = categorias.filter(c => c.name.toLowerCase() !== 'general');
                 this.state.encuestas = encuestas;
@@ -425,9 +683,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     this.state.cargandoDatos = false;
                     return Promise.resolve(null);
                 }
-                
-                // ✅ AQUÍ: Actualizar progreso antes de cargar preguntas y respuestas
-                this.mostrarProgresoCarga('Cargando preguntas y respuestas...', 40);
                 
                 return Promise.all([
                     this.fetchTodasLasPreguntas(),
@@ -447,33 +702,17 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     return;
                 }
                 
-                // ✅ AQUÍ: Actualizar progreso después de cargar respuestas
-                this.mostrarProgresoCarga('Respuestas cargadas, procesando datos...', 80);
-                
                 this.state.preguntas = preguntas.filter(p => {
                     var catNombre = p.categoriaLiderazgoName || '';
                     return catNombre.toLowerCase() !== 'general';
                 });
                 this.state.respuestas = respuestas;
                 
-                // ✅ AQUÍ: Actualizar progreso antes de generar gráficos
-                this.mostrarProgresoCarga('Generando estadísticas...', 90);
-                
                 this.generarEstadisticas();
                 this.generarGraficoPromedios();
-                
-                // ✅ AQUÍ: Actualizar progreso antes de generar gráficos finales
-                this.mostrarProgresoCarga('Generando gráficos...', 95);
-                
                 this.generarGraficos();
                 
-                // ✅ AQUÍ: Progreso completo antes de mostrar contenido
-                this.mostrarProgresoCarga('Completado', 100);
-                
-                // Pequeño delay para que el usuario vea el 100%
-                setTimeout(function() {
-                    this.mostrarContenido();
-                }.bind(this), 300);
+                this.mostrarContenido();
                 
                 this.state.datosCargados = true;
                 this.state.cargandoDatos = false;
@@ -486,6 +725,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             }.bind(this));
         },
         
+        // ... (resto de las funciones fetch se mantienen igual)
         fetchAllTeams: function () {
             return new Promise(function (resolve, reject) {
                 var maxSize = 200;
@@ -743,43 +983,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             }.bind(this));
         },
 
-        mostrarProgresoCarga: function(mensaje, porcentaje) {
-            var loadingArea = this.$el.find('#loading-area');
-            
-            if (!loadingArea.length) {
-                return;
-            }
-            
-            var progressContainer = loadingArea.find('.progress-container');
-            
-            if (progressContainer.length === 0) {
-                // Crear el contenedor de progreso
-                loadingArea.append(`
-                    <div class="progress-container" style="margin-top: 20px; max-width: 500px; margin-left: auto; margin-right: auto;">
-                        <div class="progress-bar-wrapper" style="width: 100%; height: 30px; background: #f0f0f0; border-radius: 15px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);">
-                            <div class="progress-fill" style="height: 100%; background: linear-gradient(90deg, #6B6F47 0%, #A0A57E 100%); width: 0%; transition: width 0.4s ease-out; display: flex; align-items: center; justify-content: center;">
-                                <span class="progress-percentage" style="color: white; font-weight: bold; font-size: 12px;"></span>
-                            </div>
-                        </div>
-                        <div class="progress-text" style="text-align: center; margin-top: 10px; color: #666; font-size: 14px; min-height: 20px;"></div>
-                    </div>
-                `);
-                progressContainer = loadingArea.find('.progress-container');
-            }
-            
-            // Actualizar barra y texto
-            progressContainer.find('.progress-fill').css('width', porcentaje + '%');
-            progressContainer.find('.progress-percentage').text(porcentaje + '%');
-            progressContainer.find('.progress-text').text(mensaje);
-            
-            // Si llegamos al 100%, ocultar después de un momento
-            if (porcentaje >= 100) {
-                setTimeout(function() {
-                    progressContainer.fadeOut(200);
-                }, 500);
-            }
-        },
-        
         fetchRespuestasPorEncuestas: function (encuestaIds) {
             return new Promise(function (resolve, reject) {
                 if (encuestaIds.length === 0) {
@@ -792,12 +995,10 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 var maxSize = 200;
                 var allRespuestas = [];
                 
-                // OPTIMIZACIÓN: Usar lotes más grandes para territorio nacional
-                var batchSize = encuestaIds.length > 200 ? 100 : 50; // Lotes de 100 si hay muchas encuestas
+                var batchSize = encuestaIds.length > 200 ? 100 : 50;
                 var totalBatches = Math.ceil(encuestaIds.length / batchSize);
                 var batchesCompleted = 0;
                 
-                // OPTIMIZACIÓN: Procesar múltiples lotes en paralelo (máximo 3 a la vez)
                 var maxParallelBatches = 3;
                 var currentBatchIndex = 0;
                 
@@ -836,7 +1037,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                     if (models.length === maxSize && (offset + maxSize) < collection.total) {
                                         fetchPage(offset + maxSize);
                                     } else {
-                                        // Lote completado
                                         resolveBatch(batchRespuestas);
                                     }
                                 }.bind(this)).catch(function(error) {
@@ -850,26 +1050,21 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     }.bind(this));
                 }.bind(this);
                 
-                // OPTIMIZACIÓN: Procesar lotes en paralelo
                 var processNextBatches = function() {
                     var promises = [];
                     
-                    // Iniciar hasta maxParallelBatches lotes en paralelo
                     for (var i = 0; i < maxParallelBatches && currentBatchIndex < totalBatches; i++) {
                         promises.push(processBatch(currentBatchIndex));
                         currentBatchIndex++;
                     }
                     
                     if (promises.length === 0) {
-                        // Todos los lotes completados
                         console.log('Carga completa de respuestas. Total:', allRespuestas.length);
                         resolve(allRespuestas);
                         return;
                     }
                     
-                    // Esperar a que terminen los lotes actuales
                     Promise.all(promises).then(function(results) {
-                        // Combinar resultados
                         results.forEach(function(batchResult) {
                             allRespuestas = allRespuestas.concat(batchResult);
                         });
@@ -877,7 +1072,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                         batchesCompleted += promises.length;
                         console.log('Progreso:', batchesCompleted, 'de', totalBatches, 'lotes completados. Total respuestas:', allRespuestas.length);
                         
-                        // Procesar siguiente grupo de lotes
                         if (currentBatchIndex < totalBatches) {
                             processNextBatches();
                         } else {
@@ -890,7 +1084,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     });
                 };
                 
-                // Iniciar procesamiento en paralelo
                 processNextBatches();
                 
             }.bind(this));
@@ -934,7 +1127,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             
             var promediosPorCategoria = [];
             var labels = [];
-            var categoriaIds = []; // NUEVO: Guardar los IDs de las categorías
+            var categoriaIds = [];
             
             this.state.categorias.forEach(function (categoria) {
                 var preguntasCategoria = this.state.preguntas.filter(p => p.categoriaLiderazgoId === categoria.id);
@@ -964,16 +1157,14 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 
                 labels.push(categoria.name);
                 promediosPorCategoria.push(promedio);
-                categoriaIds.push(categoria.id); // NUEVO: Guardar el ID
+                categoriaIds.push(categoria.id);
                 
             }.bind(this));
             
             if (labels.length === 0) return;
             
-            // Verificar si el header ya existe
             var existingHeader = promediosContainer.find('.chart-header');
             if (existingHeader.length === 0) {
-                // Solo crear el header si no existe
                 var textoPromedios = 'Este gráfico muestra el promedio de desempeño por categoría, calculado como porcentaje basado en las respuestas de las evaluaciones. Cada barra representa el rendimiento promedio de una categoría específica.';
                 
                 var headerHtml = `
@@ -1075,14 +1266,13 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     onClick: function(event, elements) {
                         if (elements && elements.length > 0) {
                             var index = elements[0].index;
-                            var categoriaId = categoriaIds[index]; // MODIFICADO: Usar el ID en lugar del nombre
+                            var categoriaId = categoriaIds[index];
                             this.navegarACategoria(categoriaId);
                         }
                     }.bind(this)
                 }
             });
             
-            // Solo inicializar tooltips si el header es nuevo
             if (existingHeader.length === 0) {
                 setTimeout(function() {
                     this.$el.find('#promedios-chart-container .info-icon').tooltip({
@@ -1184,7 +1374,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     var ctx = document.getElementById(canvasId);
                     if (!ctx) return;
                     
-                    // NUEVO: Validar que tengamos datos antes de crear el chart
                     var totalValores = Object.values(conteo).reduce((a, b) => a + b, 0);
                     if (totalValores === 0) {
                         console.warn('No hay datos para la categoría:', categoria.name);
@@ -1207,10 +1396,10 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                             maintainAspectRatio: true,
                             layout: {
                                 padding: {
-                                    top: 10,      // REDUCIDO porque no hay labels arriba
-                                    bottom: 30,   // AUMENTADO para la leyenda
-                                    left: 10,     // REDUCIDO
-                                    right: 10     // REDUCIDO
+                                    top: 10,
+                                    bottom: 30,
+                                    left: 10,
+                                    right: 10
                                 }
                             },
                             plugins: {
@@ -1218,7 +1407,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                     display: true,
                                     position: 'bottom',
                                     labels: {
-                                        padding: 12,          // Espacio entre cada item
+                                        padding: 12,
                                         font: { 
                                             size: 11,
                                             family: 'Arial, sans-serif'
@@ -1246,9 +1435,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                             return [];
                                         }
                                     },
-                                    // ✅ CLAVE: Configurar correctamente el espacio para la leyenda
-                                    maxHeight: 100,  // Altura máxima para la leyenda
-                                    fullSize: true   // Asegurar que ocupe todo el espacio necesario
+                                    maxHeight: 100,
+                                    fullSize: true
                                 },
                                 tooltip: {
                                     enabled: true,
@@ -1273,8 +1461,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                                 }
                             },
                             cutout: '45%',
-                            // ✅ Asegurar que el chart se ajuste correctamente
-                            aspectRatio: 1.0  // Relación de aspecto para dar más espacio vertical
+                            aspectRatio: 1.0
                         }
                     });
                 }.bind(this), 100);
@@ -1301,14 +1488,11 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         },
     
         navegarACategoria: function(categoriaIdOrName) {
-            // Si recibimos un nombre en lugar de ID, buscar el ID
             var categoriaId = categoriaIdOrName;
             
-            // Verificar si lo que recibimos es un nombre (string que no es un ID)
             var categoria = this.state.categorias.find(c => c.id === categoriaIdOrName);
             
             if (!categoria) {
-                // Si no se encontró por ID, buscar por nombre
                 categoria = this.state.categorias.find(c => c.name === categoriaIdOrName);
                 if (categoria) {
                     categoriaId = categoria.id;
@@ -1341,9 +1525,6 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.$el.find('#loading-area').show();
                 this.$el.find('#content-area').hide();
                 this.$el.find('#no-data-area').hide();
-                
-                // Limpiar barra de progreso anterior si existe
-                this.$el.find('.progress-container').remove();
             }
         },
         

@@ -1,9 +1,9 @@
 [
     {
-        "route": "Liderazgo",
+        "route": "Liderazgo/categoria/:filtros",
         "params": {
             "controller": "Liderazgo",
-            "action": "index"
+            "action": "categoria"
         }
     },
     {
@@ -14,10 +14,10 @@
         }
     },
     {
-        "route": "Liderazgo/categoria/:filtros",
+        "route": "Liderazgo",
         "params": {
             "controller": "Liderazgo",
-            "action": "categoria"
+            "action": "index"
         }
     }
 ]
