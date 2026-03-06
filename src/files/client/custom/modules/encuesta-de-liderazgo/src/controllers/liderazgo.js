@@ -5,6 +5,7 @@ define('encuesta-de-liderazgo:controllers/liderazgo', ['controllers/base'], func
         defaultAction: 'index',
         
         actionIndex: function () {
+            console.log("sisisisisisi")
             this.main('encuesta-de-liderazgo:views/evaluacion-general', {
                 scope: 'Liderazgo'
             });
