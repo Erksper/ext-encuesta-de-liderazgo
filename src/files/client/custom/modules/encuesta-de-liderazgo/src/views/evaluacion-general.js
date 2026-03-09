@@ -48,7 +48,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', [
                 modulo:           'Liderazgo',
                 usuarios:         [],
                 items:            {},
-                etiquetaEjecutor: 'Usuario evaluado'
+                etiquetaEjecutor: 'Lider'
             });
             // ─────────────────────────────────────────────────────────────
             
@@ -688,7 +688,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', [
                 usuarios:         usuarios,
                 items:            items,
                 oficina:          oficina || null,
-                etiquetaEjecutor: 'Usuario evaluado'
+                etiquetaEjecutor: 'Lider'
             });
 
             this.planesManager.cargar();
