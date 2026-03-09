@@ -1,4 +1,7 @@
-define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep) {
+define('encuesta-de-liderazgo:views/evaluacion-general', [
+    'view',
+    'encuesta-de-liderazgo:views/modules/planesAccionManager'
+], function (Dep, PlanesAccionManager) {
     
     return Dep.extend({
         
@@ -39,6 +42,15 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 datosCargados: false,
                 cargandoDatos: false
             };
+
+            // ── Planes de Acción ──────────────────────────────────────────
+            this.planesManager = new PlanesAccionManager(this, {
+                modulo:           'Liderazgo',
+                usuarios:         [],
+                items:            {},
+                etiquetaEjecutor: 'Usuario evaluado'
+            });
+            // ─────────────────────────────────────────────────────────────
             
             this.wait(true);
             this.cargarUsuarioActual();
@@ -230,6 +242,8 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
                     this.mostrarNoData();
                 }
+
+                this._ocultarPlanesAccion();
             }.bind(this));
             
             claSelect.on('change', function (e) {
@@ -240,6 +254,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.state.usuarioSeleccionado = null;
 
                 this.$el.find('#sugerencias-card').hide();
+                this._ocultarPlanesAccion();
                 
                 oficinaSelect.html('<option value="">Cargando...</option>');
                 usuarioSelect.html('<option value="">Seleccione una Oficina primero</option>');
@@ -275,6 +290,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 } else {
                     usuarioSelect.html('<option value="">Seleccione una Oficina</option>');
                     usuarioSelect.prop('disabled', true);
+                    this._ocultarPlanesAccion();
                     this.cargarDatos();
                 }
             }.bind(this));
@@ -359,6 +375,20 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 userModel.fetch({ relations: { roles: true, teams: true } }).then(function() {
                     var roles = Object.values(userModel.get('rolesNames') || {}).map(r => r.toLowerCase());
                     this.state.esCasaNacional = roles.includes('casa nacional');
+
+                    // ── exponer para PlanesAccionManager ──────────────────
+                    this.esCasaNacional     = this.state.esCasaNacional;
+                    // CN tiene prioridad: si es CN nunca lo tratamos como GDC
+                    this.esGerenteODirector = !this.state.esCasaNacional && (roles.includes('gerente') || roles.includes('director') || roles.includes('coordinador'));
+                    this.usuarioActualId    = user.id;
+                    this.usuarioActualNombre = user.get('name');
+
+                    if      (roles.includes('casa nacional'))  this.rolUsuario = 'Casa Nacional';
+                    else if (roles.includes('director'))       this.rolUsuario = 'Director';
+                    else if (roles.includes('gerente'))        this.rolUsuario = 'Gerente';
+                    else if (roles.includes('coordinador'))    this.rolUsuario = 'Coordinador';
+                    else                                       this.rolUsuario = 'Usuario';
+                    // ──────────────────────────────────────────────────────
                     
                     this.state.usuario.teamsIds = userModel.get('teamsIds') || [];
                     this.state.usuario.teamsNames = userModel.get('teamsNames') || {};
@@ -444,7 +474,29 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         
         cargarOficinasPorCLA: function (claId) {
             var oficinaSelect = this.$el.find('#oficina-select');
-            
+            var self = this;
+
+            // Gerente/Director/Coordinador/Asesor: solo ve su propia oficina
+            if (!this.state.esCasaNacional && (this.esGerenteODirector || this.rolUsuario === 'Usuario')) {
+                var claPattern2 = /^CLA\d+$/i;
+                var teamsIds2   = (this.state.usuario && this.state.usuario.teamsIds) || [];
+                var teamsNames2 = (this.state.usuario && this.state.usuario.teamsNames) || {};
+                var miOficinaId = teamsIds2.find(function (id) {
+                    return !claPattern2.test(id) && id.toLowerCase() !== 'venezuela';
+                });
+
+                oficinaSelect.html('<option value="">Todas las oficinas</option>');
+                if (miOficinaId) {
+                    var miOficinaNombre = teamsNames2[miOficinaId] || miOficinaId;
+                    if (miOficinaNombre.toLowerCase().indexOf('venezuela') === -1) {
+                        oficinaSelect.append('<option value="' + miOficinaId + '">' + miOficinaNombre + '</option>');
+                    }
+                }
+                oficinaSelect.prop('disabled', false);
+                return Promise.resolve();
+            }
+
+            // Casa Nacional: ve todas las oficinas del CLA
             return Promise.all([
                 this.fetchAllTeams(),
                 this.fetchUsuariosPorCLA(claId)
@@ -461,7 +513,11 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                     });
                 });
                 
-                var oficinas = teams.filter(t => oficinasIds.has(t.id));
+                // Excluir oficinas cuyo nombre contenga "venezuela"
+                var oficinas = teams.filter(function (t) {
+                    return oficinasIds.has(t.id) &&
+                           (t.name || '').toLowerCase().indexOf('venezuela') === -1;
+                });
                 
                 oficinaSelect.html('<option value="">Todas las oficinas</option>');
                 oficinas.forEach(oficina => {
@@ -476,6 +532,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
         
         cargarUsuariosPorOficina: function (oficinaId) {
             var usuarioSelect = this.$el.find('#usuario-select');
+            var self = this;
             
             return this.fetchEncuestasPorOficina(oficinaId).then(function (encuestas) {
                 var usuariosIds = new Set();
@@ -487,8 +544,20 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 
                 return this.fetchUsuariosPorIds(Array.from(usuariosIds));
             }.bind(this)).then(function (usuarios) {
+                // Filtrar usuarios cuyo nombre contenga "por la casa" (case-insensitive)
+                var usuariosFiltrados = usuarios.filter(function (u) {
+                    return (u.name || '').toLowerCase().indexOf('por la casa') === -1;
+                });
+
+                // Si es asesor (no CN, no GDC): solo se ve a sí mismo
+                if (!self.state.esCasaNacional && !self.esGerenteODirector) {
+                    usuariosFiltrados = usuariosFiltrados.filter(function (u) {
+                        return u.id === self.usuarioActualId;
+                    });
+                }
+
                 usuarioSelect.html('<option value="">Todos los usuarios</option>');
-                usuarios.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(usuario => {
+                usuariosFiltrados.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(usuario => {
                     usuarioSelect.append(`<option value="${usuario.id}">${usuario.name}</option>`);
                 });
                 
@@ -558,6 +627,10 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.generarGraficos();
                 
                 this.mostrarContenido();
+
+                // ── Planes de Acción ──────────────────────────────────────
+                this._actualizarPlanesAccion();
+                // ─────────────────────────────────────────────────────────
                 
                 this.state.datosCargados = true;
                 this.state.cargandoDatos = false;
@@ -568,6 +641,66 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
                 this.state.cargandoDatos = false;
             }.bind(this));
         },
+
+        // ── Planes de Acción: métodos de integración ──────────────────────
+
+        /**
+         * Actualiza la configuración del PlanesAccionManager y carga los planes
+         * cuando hay oficina o usuario seleccionado.
+         */
+        _actualizarPlanesAccion: function () {
+            var oficina  = this.state.oficinaSeleccionada;
+            var usuario  = this.state.usuarioSeleccionado;
+
+            // Solo mostramos planes si hay al menos oficina seleccionada
+            // (y no estamos en "Territorio Nacional" CLA0 sin oficina)
+            if (!oficina && !usuario) {
+                this._ocultarPlanesAccion();
+                return;
+            }
+
+            // Construir lista de usuarios para el selector "nuevo plan"
+            var usuarios = [];
+            if (usuario) {
+                // Si hay un usuario específico, solo ese
+                var $sel = this.$el.find('#usuario-select');
+                var nombre = $sel.find('option:selected').text();
+                usuarios = [{ id: usuario, name: nombre }];
+            } else {
+                // Todos los usuarios de la oficina actual
+                var $usuarioSelect = this.$el.find('#usuario-select');
+                $usuarioSelect.find('option').each(function () {
+                    var val = $(this).val();
+                    var txt = $(this).text();
+                    if (val) usuarios.push({ id: val, name: txt });
+                });
+            }
+
+            // Construir items (categorías sin subcategorías)
+            var items = {};
+            (this.state.categorias || []).forEach(function (cat) {
+                // key = nombre categoría, value = array vacío (sin subcategorías)
+                items[cat.name] = [];
+            });
+
+            this.planesManager.actualizarConfig({
+                modulo:           'Liderazgo',
+                usuarios:         usuarios,
+                items:            items,
+                oficina:          oficina || null,
+                etiquetaEjecutor: 'Usuario evaluado'
+            });
+
+            this.planesManager.cargar();
+        },
+
+        /** Oculta / vacía la sección de planes */
+        _ocultarPlanesAccion: function () {
+            var $sec = this.$el.find('#seccion-planes-accion');
+            if ($sec.length) $sec.empty();
+        },
+
+        // ─────────────────────────────────────────────────────────────────
         
         fetchAllTeams: function () {
             return new Promise(function (resolve, reject) {
@@ -1368,6 +1501,7 @@ define('encuesta-de-liderazgo:views/evaluacion-general', ['view'], function (Dep
             this.$el.find('#loading-area').hide();
             this.$el.find('#content-area').hide();
             this.$el.find('#no-data-area').show();
+            this._ocultarPlanesAccion();
         },
         
         cargarSugerencias: function () {

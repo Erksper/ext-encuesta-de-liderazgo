@@ -74,6 +74,9 @@
     </div>
 </div>
 
+<!-- Contenedor de Planes de Acción (se puebla dinámicamente) -->
+<div id="seccion-planes-accion"></div>
+
 <style>
 .reporte-liderazgo-container {
     background: white;
@@ -210,7 +213,6 @@
     row-gap: 40px;
 }
 
-/* TARJETAS DE GRÁFICOS MÁS ALTAS - CORREGIDO */
 .chart-card {
     background: white;
     border-radius: 8px;
@@ -266,7 +268,6 @@
     color: #6B6F47;
 }
 
-/* CONTENEDOR DE GRÁFICOS DE DONA MÁS ALTO - CORREGIDO */
 .chart-wrapper {
     flex: 1;
     display: flex;
@@ -379,4 +380,10 @@
 .chartjs-render-monitor {
     position: relative;
 }
+
+/* ── Planes de Acción ─────────────────────────────────────────── */
+#seccion-planes-accion {
+    margin-top: 20px;
+}
+/* ─────────────────────────────────────────────────────────────── */
 </style>
