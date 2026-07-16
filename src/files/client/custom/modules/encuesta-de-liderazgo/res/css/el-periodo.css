@@ -1,0 +1,135 @@
+/* client/custom/modules/encuesta-de-liderazgo/res/css/el-periodo.css */
+
+.el-periodo-fechas {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.el-periodo-fecha-group {
+    flex: 1;
+    min-width: 200px;
+}
+
+.el-periodo-fecha-group label {
+    font-weight: 600;
+    color: var(--el-color-dark, #1A1A1A);
+    margin-bottom: 6px;
+    display: block;
+}
+
+.el-periodo-fecha-group input[type="date"] {
+    width: 100%;
+    height: 46px;
+    padding: 8px 12px;
+    font-size: 15px;
+    border: 2px solid var(--el-color-gray-light, #E6E6E6);
+    border-radius: var(--el-radius-lg, 8px);
+    color: var(--el-color-dark, #1A1A1A);
+    background: #fff;
+}
+
+.el-periodo-fecha-group input[type="date"]:focus {
+    border-color: var(--el-color-primary, #B8A279);
+    outline: none;
+}
+
+.el-periodo-error {
+    color: #e74c3c;
+    font-size: 13px;
+    margin-top: -4px;
+    margin-bottom: 12px;
+    display: none;
+}
+
+.el-periodo-error.visible { display: block; }
+
+.el-lideres-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin: 18px 0 10px;
+    flex-wrap: wrap;
+}
+
+.el-lideres-buscador {
+    flex: 1;
+    min-width: 200px;
+    max-width: 320px;
+    height: 40px;
+    padding: 6px 12px;
+    border: 2px solid var(--el-color-gray-light, #E6E6E6);
+    border-radius: var(--el-radius-lg, 8px);
+}
+
+.el-lideres-contador {
+    font-size: 13px;
+    color: var(--el-color-gray-medium, #666);
+    white-space: nowrap;
+}
+
+.el-lideres-tabla-wrap {
+    max-height: 480px;
+    overflow-y: auto;
+    border: 1px solid var(--el-color-gray-light, #E6E6E6);
+    border-radius: var(--el-radius-lg, 8px);
+}
+
+.el-lideres-tabla {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.el-lideres-tabla thead th {
+    position: sticky;
+    top: 0;
+    background: var(--el-color-gray-bg, #F8F9FA);
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--el-color-gray-medium, #666);
+    border-bottom: 1px solid var(--el-color-gray-light, #E6E6E6);
+    z-index: 1;
+}
+
+.el-lideres-tabla tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+}
+
+.el-lideres-tabla tbody tr:last-child td { border-bottom: none; }
+.el-lideres-tabla tbody tr.el-fila-inactiva { opacity: 0.55; }
+
+.el-lideres-tabla .el-check-col {
+    width: 70px;
+    text-align: center;
+}
+
+.el-lideres-tabla input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.el-rol-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--el-color-primary-light, #D4C19C);
+    color: #4a3f28;
+    text-transform: capitalize;
+}
+
+.el-periodo-acciones {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+}

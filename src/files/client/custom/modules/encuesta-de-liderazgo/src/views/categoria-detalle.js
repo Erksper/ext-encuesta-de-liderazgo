@@ -107,39 +107,34 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
                     
                     this.$el.find('#categoria-nombre-titulo').text(categoria.name);
                     this.configurarTextoCategoria(categoria.name);
-                    
-                    return Promise.all([
-                        this.fetchEncuestasFiltradas(),
-                        this.fetchPreguntasPorCategoria(this.categoriaId)
-                    ]);
+
+                    return Espo.Ajax.getRequest('EncuestaLiderazgoCategoria/action/getDetalleCategoria', {
+                        categoriaId: this.categoriaId,
+                        anio: this.filtros.anio,
+                        cla: this.filtros.cla,
+                        oficina: this.filtros.oficina,
+                        usuario: this.filtros.usuario
+                    });
                 }.bind(this))
-                .then(function (resultados) {
-                    var encuestas = resultados[0];
-                    var preguntas = resultados[1];
-                    
-                    if (encuestas.length === 0 || preguntas.length === 0) {
+                .then(function (resp) {
+                    if (!resp || !resp.success) {
+                        Espo.Ui.error((resp && resp.error) || 'Error al cargar los datos de la categoría');
+                        this.mostrarNoData();
+                        return Promise.reject('Error al cargar');
+                    }
+
+                    if (resp.totalRespuestas === 0) {
                         this.mostrarNoData();
                         return Promise.reject('No hay datos');
                     }
                     
-                    return this.fetchRespuestasPorEncuestas(
-                        encuestas.map(e => e.id),
-                        preguntas.map(p => p.id)
-                    );
-                }.bind(this))
-                .then(function (respuestas) {
-                    if (respuestas.length === 0) {
-                        this.mostrarNoData();
-                        return;
-                    }
-                    
-                    this.generarGauge(respuestas);
-                    this.generarTablaPreguntas(respuestas);
+                    this.generarGauge(resp.distribucionGeneral, resp.totalRespuestas);
+                    this.generarTablaPreguntas(resp.preguntas);
                     this.mostrarContenidoCompleto();
                     
                 }.bind(this))
                 .catch(function (error) {
-                    if (error !== 'Categoría no encontrada' && error !== 'No hay datos') {
+                    if (error !== 'Categoría no encontrada' && error !== 'No hay datos' && error !== 'Error al cargar') {
                         Espo.Ui.error('Error al cargar los datos de la categoría: ' + error);
                     }
                     this.mostrarNoData();
@@ -351,7 +346,7 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             });
         },
         
-        generarGauge: function (respuestas) {
+        generarGauge: function (distribucion, totalRespuestas) {
             var container = this.$el.find('.gauge-wrapper');
             var ctx = document.getElementById('gauge-general');
             if (!ctx) {
@@ -362,16 +357,6 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             ctx.style.height = '350px';
             ctx.width = 350;
             ctx.height = 350;
-            
-            var distribucion = { '4': 0, '3': 0, '2': 0, '1': 0 };
-            var totalRespuestas = 0;
-            
-            respuestas.forEach(r => {
-                if (distribucion.hasOwnProperty(r.seleccion)) {
-                    distribucion[r.seleccion]++;
-                    totalRespuestas++;
-                }
-            });
             
             if (totalRespuestas === 0) {
                 this.$el.find('#total-respuestas').text('0');
@@ -569,50 +554,41 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
             }
         },
         
-        generarTablaPreguntas: function (respuestas) {
+        generarTablaPreguntas: function (preguntas) {
             var self = this;
             var tbody = this.$el.find('#preguntas-tbody');
             tbody.empty();
-            
-            this.fetchPreguntasPorCategoria(this.categoriaId).then(function(preguntas) {
-                preguntas.sort((a, b) => a.orden - b.orden).forEach(function (pregunta) {
-                    var respuestasPregunta = respuestas.filter(r => r.preguntaId === pregunta.id);
-                    
-                    if (respuestasPregunta.length === 0) return;
-                    
-                    var conteo = { '4': 0, '3': 0, '2': 0, '1': 0 };
-                    respuestasPregunta.forEach(r => {
-                        if (conteo.hasOwnProperty(r.seleccion)) {
-                            conteo[r.seleccion]++;
-                        }
-                    });
-                    
-                    var total = Object.values(conteo).reduce((a, b) => a + b, 0);
-                    var suma = parseInt(conteo['4']) * 4 + parseInt(conteo['3']) * 3 + 
-                               parseInt(conteo['2']) * 2 + parseInt(conteo['1']) * 1;
-                    var promedio = total > 0 ? (suma / total) : 0;
-                    var promedioBase10 = total > 0 ? (promedio / 4 * 10) : 0;
-                    
-                    var porcentajes = {
-                        '4': total > 0 ? ((conteo['4'] / total) * 100).toFixed(1) : '0.0',
-                        '3': total > 0 ? ((conteo['3'] / total) * 100).toFixed(1) : '0.0',
-                        '2': total > 0 ? ((conteo['2'] / total) * 100).toFixed(1) : '0.0',
-                        '1': total > 0 ? ((conteo['1'] / total) * 100).toFixed(1) : '0.0'
-                    };
-                    
-                    var row = `
-                        <tr>
-                            <td>${self.escapeHtml(pregunta.pregunta)}</td>
-                            <td class="porcentaje-cell">${porcentajes['4']}%</td>
-                            <td class="porcentaje-cell">${porcentajes['3']}%</td>
-                            <td class="porcentaje-cell">${porcentajes['2']}%</td>
-                            <td class="porcentaje-cell">${porcentajes['1']}%</td>
-                            <td class="promedio-cell">${promedioBase10.toFixed(2)}/10</td>
-                        </tr>
-                    `;
-                    
-                    tbody.append(row);
-                });
+
+            preguntas.forEach(function (pregunta) {
+                var conteo = pregunta.distribucion;
+                var total = pregunta.total;
+
+                if (total === 0) return;
+                
+                var suma = parseInt(conteo['4']) * 4 + parseInt(conteo['3']) * 3 + 
+                           parseInt(conteo['2']) * 2 + parseInt(conteo['1']) * 1;
+                var promedio = total > 0 ? (suma / total) : 0;
+                var promedioBase10 = total > 0 ? (promedio / 4 * 10) : 0;
+                
+                var porcentajes = {
+                    '4': total > 0 ? ((conteo['4'] / total) * 100).toFixed(1) : '0.0',
+                    '3': total > 0 ? ((conteo['3'] / total) * 100).toFixed(1) : '0.0',
+                    '2': total > 0 ? ((conteo['2'] / total) * 100).toFixed(1) : '0.0',
+                    '1': total > 0 ? ((conteo['1'] / total) * 100).toFixed(1) : '0.0'
+                };
+                
+                var row = `
+                    <tr>
+                        <td>${self.escapeHtml(pregunta.texto)}</td>
+                        <td class="porcentaje-cell">${porcentajes['4']}%</td>
+                        <td class="porcentaje-cell">${porcentajes['3']}%</td>
+                        <td class="porcentaje-cell">${porcentajes['2']}%</td>
+                        <td class="porcentaje-cell">${porcentajes['1']}%</td>
+                        <td class="promedio-cell">${promedioBase10.toFixed(2)}/10</td>
+                    </tr>
+                `;
+                
+                tbody.append(row);
             });
         },
         

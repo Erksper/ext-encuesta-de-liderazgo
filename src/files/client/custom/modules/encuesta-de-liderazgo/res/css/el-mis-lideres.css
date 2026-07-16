@@ -1,0 +1,85 @@
+/* client/custom/modules/encuesta-de-liderazgo/res/css/el-mis-lideres.css */
+
+.el-lideres-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.el-lider-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 16px 18px;
+    border: 2px solid var(--el-color-gray-light, #E6E6E6);
+    border-radius: var(--el-radius-lg, 8px);
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.el-lider-item:hover {
+    border-color: var(--el-color-primary, #B8A279);
+    box-shadow: 0 2px 8px rgba(184,162,121,0.25);
+    transform: translateY(-1px);
+}
+
+.el-lider-item.el-lider-completado {
+    cursor: not-allowed;
+    opacity: 0.55;
+    background: var(--el-color-gray-bg, #F8F9FA);
+}
+
+.el-lider-item.el-lider-completado:hover {
+    border-color: var(--el-color-gray-light, #E6E6E6);
+    box-shadow: none;
+    transform: none;
+}
+
+.el-lider-nombre {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--el-color-dark, #1A1A1A);
+}
+
+.el-lider-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.el-badge-pendiente {
+    background: #EEF1F5;
+    color: #566573;
+}
+
+.el-badge-parcial {
+    background: #FEF3E2;
+    color: #B9770E;
+}
+
+.el-badge-completado {
+    background: #E9F7EF;
+    color: #1E8449;
+}
+
+.el-lideres-empty,
+.el-lideres-sin-periodo {
+    text-align: center;
+    padding: 50px 20px;
+    color: var(--el-color-gray-medium, #666);
+}
+
+.el-lideres-empty i,
+.el-lideres-sin-periodo i {
+    font-size: 40px;
+    display: block;
+    margin-bottom: 14px;
+    color: var(--el-color-primary, #B8A279);
+}

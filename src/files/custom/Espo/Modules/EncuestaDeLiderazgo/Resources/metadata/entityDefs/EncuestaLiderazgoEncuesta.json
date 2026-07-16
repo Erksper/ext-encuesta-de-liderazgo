@@ -1,0 +1,85 @@
+{
+    "fields": {
+        "name": {
+            "type": "varchar",
+            "required": false,
+            "trim": true,
+            "maxLength": 255
+        },
+        "fechaInicio": {
+            "type": "date",
+            "required": true
+        },
+        "fechaFin": {
+            "type": "date",
+            "required": true
+        },
+        "usuarioCreador": {
+            "type": "link",
+            "entity": "User"
+        },
+        "totalAsesoresEvaluar": {
+            "type": "int",
+            "default": 0
+        },
+        "createdAt": {
+            "type": "datetime",
+            "readOnly": true
+        },
+        "modifiedAt": {
+            "type": "datetime",
+            "readOnly": true
+        },
+        "createdBy": {
+            "type": "link",
+            "entity": "User",
+            "readOnly": true
+        },
+        "modifiedBy": {
+            "type": "link",
+            "entity": "User",
+            "readOnly": true
+        }
+    },
+    "links": {
+        "usuarioCreador": {
+            "type": "belongsTo",
+            "entity": "User"
+        },
+        "asesoresEvaluados": {
+            "type": "hasMany",
+            "entity": "EncuestaLiderazgoAsesoresEvaluados",
+            "foreign": "encuestaLiderazgoEncuesta"
+        },
+        "asesoresPorEvaluar": {
+            "type": "hasMany",
+            "entity": "EncuestaLiderazgoAsesoresPorEvaluar",
+            "foreign": "encuestaLiderazgoEncuesta"
+        },
+        "instanciasEncuestaLiderazgo": {
+            "type": "hasMany",
+            "entity": "EncuestaLiderazgo",
+            "foreign": "periodoEncuesta"
+        },
+        "createdBy": {
+            "type": "belongsTo",
+            "entity": "User"
+        },
+        "modifiedBy": {
+            "type": "belongsTo",
+            "entity": "User"
+        }
+    },
+    "collection": {
+        "orderBy": "fechaInicio",
+        "order": "desc"
+    },
+    "indexes": {
+        "fechaInicio": {
+            "columns": ["fecha_inicio", "deleted"]
+        },
+        "fechaFin": {
+            "columns": ["fecha_fin", "deleted"]
+        }
+    }
+}

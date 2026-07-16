@@ -14,6 +14,41 @@
         }
     },
     {
+        "route": "Liderazgo/reportes",
+        "params": {
+            "controller": "Liderazgo",
+            "action": "reportes"
+        }
+    },
+    {
+        "route": "Liderazgo/periodo",
+        "params": {
+            "controller": "Liderazgo",
+            "action": "periodo"
+        }
+    },
+    {
+        "route": "Liderazgo/responder/:asesorPorEvaluarId",
+        "params": {
+            "controller": "Liderazgo",
+            "action": "responder"
+        }
+    },
+    {
+        "route": "Liderazgo/encuesta",
+        "params": {
+            "controller": "Liderazgo",
+            "action": "encuesta"
+        }
+    },
+    {
+        "route": "Liderazgo/pendientes",
+        "params": {
+            "controller": "Liderazgo",
+            "action": "pendientes"
+        }
+    },
+    {
         "route": "Liderazgo",
         "params": {
             "controller": "Liderazgo",

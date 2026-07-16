@@ -579,49 +579,37 @@ define('encuesta-de-liderazgo:views/evaluacion-general', [
             
             this.state.cargandoDatos = true;
             this.mostrarLoading(true);
-            
-            this.state.encuestas = [];
-            this.state.respuestas = [];
-            this.state.preguntas = [];
-            
+
+            this.state.estadisticas = null;
+
+            var filtros = {};
+            if (this.state.fechaSeleccionada) filtros.anio = this.state.fechaSeleccionada;
+            if (this.state.claSeleccionado) filtros.cla = this.state.claSeleccionado;
+            if (this.state.oficinaSeleccionada) filtros.oficina = this.state.oficinaSeleccionada;
+            if (this.state.usuarioSeleccionado) filtros.usuario = this.state.usuarioSeleccionado;
+
             Promise.all([
                 this.fetchCategorias(),
-                this.fetchEncuestasFiltradas()
-            ]).then(function ([categorias, encuestas]) {
-                
+                Espo.Ajax.getRequest('EncuestaLiderazgo/action/getEstadisticas', filtros)
+            ]).then(function ([categorias, estadisticas]) {
+
                 this.state.categorias = categorias.filter(c => c.name.toLowerCase() !== 'general');
-                this.state.encuestas = encuestas;
-                
-                if (this.state.encuestas.length === 0) {
+
+                if (!estadisticas || !estadisticas.success) {
+                    Espo.Ui.error((estadisticas && estadisticas.error) || 'Error al cargar las estadísticas');
                     this.mostrarNoData();
                     this.state.cargandoDatos = false;
-                    return Promise.resolve(null);
+                    return;
                 }
-                
-                return Promise.all([
-                    this.fetchTodasLasPreguntas(),
-                    this.fetchRespuestasPorEncuestas(this.state.encuestas.map(e => e.id))
-                ]);
-            }.bind(this)).then(function (resultado) {
-                if (!resultado) {
+
+                if (estadisticas.totalEncuestas === 0) {
+                    this.mostrarNoData();
                     this.state.cargandoDatos = false;
                     return;
                 }
-                
-                var preguntas = resultado[0];
-                var respuestas = resultado[1];
-                
-                if (!preguntas) {
-                    this.state.cargandoDatos = false;
-                    return;
-                }
-                
-                this.state.preguntas = preguntas.filter(p => {
-                    var catNombre = p.categoriaLiderazgoName || '';
-                    return catNombre.toLowerCase() !== 'general';
-                });
-                this.state.respuestas = respuestas;
-                
+
+                this.state.estadisticas = estadisticas;
+
                 this.generarEstadisticas();
                 this.generarGraficoPromedios();
                 this.generarGraficos();
@@ -1057,9 +1045,9 @@ define('encuesta-de-liderazgo:views/evaluacion-general', [
         generarEstadisticas: function () {
             var statsContainer = this.$el.find('#stats-summary');
             
-            var totalEncuestas = this.state.encuestas.length;
-            var totalRespuestas = this.state.respuestas.length;
-            var usuariosEvaluados = new Set(this.state.encuestas.map(e => e.usuarioEvaluadoId)).size;
+            var totalEncuestas = this.state.estadisticas.totalEncuestas;
+            var totalRespuestas = this.state.estadisticas.totalRespuestas;
+            var usuariosEvaluados = this.state.estadisticas.usuariosEvaluados;
             
             var html = `
                 <div class="stat-card">
@@ -1093,38 +1081,12 @@ define('encuesta-de-liderazgo:views/evaluacion-general', [
             var promediosPorCategoria = [];
             var labels = [];
             var categoriaIds = [];
-            
-            this.state.categorias.forEach(function (categoria) {
-                var preguntasCategoria = this.state.preguntas.filter(p => p.categoriaLiderazgoId === categoria.id);
-                
-                if (preguntasCategoria.length === 0) return;
-                
-                var preguntasIds = preguntasCategoria.map(p => p.id);
-                var respuestasCategoria = this.state.respuestas.filter(r => 
-                    preguntasIds.includes(r.preguntaId) && r.seleccion
-                );
-                
-                if (respuestasCategoria.length === 0) return;
-                
-                var conteo = { '4': 0, '3': 0, '2': 0, '1': 0 };
-                respuestasCategoria.forEach(r => {
-                    if (conteo.hasOwnProperty(r.seleccion)) {
-                        conteo[r.seleccion]++;
-                    }
-                });
-                
-                var total = Object.values(conteo).reduce((a, b) => a + b, 0);
-                if (total === 0) return;
-                
-                var suma = parseInt(conteo['4']) * 4 + parseInt(conteo['3']) * 3 + 
-                        parseInt(conteo['2']) * 2 + parseInt(conteo['1']) * 1;
-                var promedio = (suma / total) / 4 * 100;
-                
+
+            (this.state.estadisticas.categorias || []).forEach(function (categoria) {
                 labels.push(categoria.name);
-                promediosPorCategoria.push(promedio);
+                promediosPorCategoria.push(categoria.promedio);
                 categoriaIds.push(categoria.id);
-                
-            }.bind(this));
+            });
             
             if (labels.length === 0) return;
             
@@ -1288,28 +1250,10 @@ define('encuesta-de-liderazgo:views/evaluacion-general', [
                 };
             }
 
-            this.state.categorias.forEach(function (categoria) {
-                var preguntasCategoria = this.state.preguntas.filter(p => p.categoriaLiderazgoId === categoria.id);
-                
-                if (preguntasCategoria.length === 0) return;
-                
-                var preguntasIds = preguntasCategoria.map(p => p.id);
-                var respuestasCategoria = this.state.respuestas.filter(r => 
-                    preguntasIds.includes(r.preguntaId) && r.seleccion
-                );
-                
-                if (respuestasCategoria.length === 0) return;
-                
-                var conteo = { '4': 0, '3': 0, '2': 0, '1': 0 };
-                respuestasCategoria.forEach(r => {
-                    if (conteo.hasOwnProperty(r.seleccion)) {
-                        conteo[r.seleccion]++;
-                    }
-                });
-                
-                var total = Object.values(conteo).reduce((a, b) => a + b, 0);
-                if (total === 0) return;
-                
+            (this.state.estadisticas.categorias || []).forEach(function (categoria) {
+                var conteo = categoria.distribucion;
+                var total = categoria.total;
+
                 var canvasId = 'chart-' + categoria.id;
                 var categoriaNombre = categoria.name;
                 var textoCategoria = this.obtenerTextoCategoria(categoriaNombre);

@@ -1,0 +1,175 @@
+/* client/custom/modules/encuesta-de-liderazgo/res/css/el-encuesta.css */
+
+.el-encuesta-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+
+.el-encuesta-header-info h2 {
+    margin: 0 0 2px;
+    font-size: 22px;
+    color: var(--el-color-dark, #1A1A1A);
+}
+
+.el-encuesta-header-info p {
+    margin: 0;
+    color: var(--el-color-gray-medium, #666);
+    font-size: 13px;
+}
+
+.el-encuesta-header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.el-readonly-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #E9F7EF;
+    border: 1px solid #A9DFBF;
+    color: #1E8449;
+    border-radius: var(--el-radius-lg, 8px);
+    padding: 12px 18px;
+    margin-bottom: 18px;
+    font-size: 14px;
+}
+
+.el-tabs-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    border-bottom: 2px solid var(--el-color-gray-light, #E6E6E6);
+    margin-bottom: 20px;
+    padding-bottom: 0;
+}
+
+.el-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    color: var(--el-color-gray-medium, #666);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    border-radius: 6px 6px 0 0;
+    transition: all 0.2s ease;
+}
+
+.el-tab-btn:hover {
+    background: var(--el-color-gray-bg, #F8F9FA);
+    color: var(--el-color-dark, #1A1A1A);
+}
+
+.el-tab-btn.active {
+    color: var(--el-color-primary-dark, #9D8B5F);
+    border-bottom-color: var(--el-color-primary, #B8A279);
+    background: var(--el-color-gray-bg, #F8F9FA);
+}
+
+.el-tab-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--el-color-gray-light, #E6E6E6);
+    color: #fff;
+    font-size: 10px;
+}
+
+.el-tab-btn.el-tab-completa .el-tab-check {
+    background: #27AE60;
+}
+
+.el-tab-pane { display: none; }
+.el-tab-pane.active { display: block; }
+
+.el-categoria-info {
+    color: var(--el-color-gray-medium, #666);
+    font-size: 13px;
+    margin: -6px 0 18px;
+}
+
+.el-pregunta-block {
+    background: #fff;
+    border: 1px solid var(--el-color-gray-light, #E6E6E6);
+    border-radius: var(--el-radius-lg, 8px);
+    padding: 16px 18px;
+    margin-bottom: 14px;
+}
+
+.el-pregunta-texto {
+    font-weight: 600;
+    color: var(--el-color-dark, #1A1A1A);
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+
+.el-opciones-seleccion {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.el-opcion-btn {
+    flex: 1;
+    min-width: 130px;
+    text-align: center;
+    padding: 10px 12px;
+    border: 2px solid var(--el-color-gray-light, #E6E6E6);
+    border-radius: var(--el-radius-lg, 8px);
+    background: #fff;
+    color: var(--el-color-dark, #1A1A1A);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.el-opcion-btn:hover {
+    border-color: var(--el-color-primary, #B8A279);
+}
+
+.el-opcion-btn.selected {
+    background: var(--el-color-primary, #B8A279);
+    border-color: var(--el-color-primary-dark, #9D8B5F);
+    color: #fff;
+}
+
+.el-pregunta-textarea {
+    width: 100%;
+    min-height: 90px;
+    padding: 10px 12px;
+    border: 2px solid var(--el-color-gray-light, #E6E6E6);
+    border-radius: var(--el-radius-lg, 8px);
+    font-size: 14px;
+    resize: vertical;
+}
+
+.el-pregunta-textarea:focus {
+    border-color: var(--el-color-primary, #B8A279);
+    outline: none;
+}
+
+.el-encuesta-disabled .el-opcion-btn,
+.el-encuesta-disabled .el-pregunta-textarea {
+    pointer-events: none;
+    opacity: 0.7;
+    background: var(--el-color-gray-bg, #F8F9FA);
+}
+
+@media (max-width: 768px) {
+    .el-tabs-nav { overflow-x: auto; flex-wrap: nowrap; }
+    .el-tab-btn { white-space: nowrap; }
+    .el-opciones-seleccion { flex-direction: column; }
+}

@@ -1,0 +1,138 @@
+/* client/custom/modules/encuesta-de-liderazgo/res/css/el-landing.css */
+:root {
+    --el-color-primary:        #B8A279;
+    --el-color-primary-dark:   #9D8B5F;
+    --el-color-primary-light:  #D4C19C;
+    --el-color-dark:           #1A1A1A;
+    --el-color-gray-medium:    #666666;
+    --el-color-gray-light:     #E6E6E6;
+    --el-color-gray-bg:        #F8F9FA;
+    --el-shadow-card:          0 2px 8px rgba(0,0,0,0.08);
+    --el-radius-lg:            8px;
+    --el-radius-xl:            12px;
+    --el-transition:           0.3s ease;
+}
+
+.el-page-header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    background: #fff;
+    border-radius: var(--el-radius-xl);
+    padding: 24px 28px;
+    margin-bottom: 24px;
+    box-shadow: var(--el-shadow-card);
+    border: 1px solid var(--el-color-gray-light);
+}
+
+.el-header-icon {
+    width: 56px;
+    height: 56px;
+    background: var(--el-color-primary);
+    border-radius: var(--el-radius-xl);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 26px;
+    flex-shrink: 0;
+}
+
+.el-page-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--el-color-dark);
+    margin: 0 0 4px;
+}
+
+.el-page-sub {
+    color: var(--el-color-gray-medium);
+    font-size: 14px;
+    margin: 0;
+}
+
+.el-periodo-band {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--el-color-gray-bg);
+    border: 1px solid var(--el-color-gray-light);
+    border-left: 4px solid var(--el-color-primary);
+    border-radius: var(--el-radius-lg);
+    padding: 12px 18px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: var(--el-color-dark);
+}
+
+.el-periodo-band i { color: var(--el-color-primary); }
+
+.el-main-card {
+    background: #fff;
+    border-radius: var(--el-radius-xl);
+    box-shadow: var(--el-shadow-card);
+    border: 1px solid var(--el-color-gray-light);
+    overflow: hidden;
+    margin-bottom: 24px;
+}
+
+.el-main-card-body {
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.el-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    height: 60px;
+    padding: 10px 24px;
+    border-radius: var(--el-radius-lg);
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+    border: 2px solid var(--el-color-primary-dark);
+    background: var(--el-color-primary);
+    color: #fff;
+    transition: all var(--el-transition);
+    text-decoration: none;
+}
+
+.el-btn i { font-size: 18px; }
+
+.el-btn:hover,
+.el-btn:focus {
+    background: var(--el-color-primary-dark);
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(184,162,121,0.35);
+    text-decoration: none;
+}
+
+.el-acceso-denegado {
+    background: #fff;
+    border-radius: var(--el-radius-xl);
+    padding: 60px 40px;
+    text-align: center;
+    box-shadow: var(--el-shadow-card);
+    border: 1px solid var(--el-color-gray-light);
+    border-top: 4px solid #e74c3c;
+    margin-top: 20px;
+}
+
+.el-acceso-icon {
+    font-size: 52px;
+    color: #e74c3c;
+    margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+    .el-page-header    { padding: 16px 18px; flex-wrap: wrap; }
+    .el-page-title     { font-size: 20px; }
+    .el-main-card-body { padding: 20px 16px; gap: 12px; }
+    .el-btn             { height: 52px; font-size: 14px; }
+}

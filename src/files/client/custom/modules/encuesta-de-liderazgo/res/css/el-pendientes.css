@@ -1,0 +1,15 @@
+/* client/custom/modules/encuesta-de-liderazgo/res/css/el-pendientes.css */
+
+.el-pendiente-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    height: 26px;
+    padding: 0 8px;
+    border-radius: 13px;
+    background: #FEF3E2;
+    color: #B9770E;
+    font-weight: 700;
+    font-size: 13px;
+}
