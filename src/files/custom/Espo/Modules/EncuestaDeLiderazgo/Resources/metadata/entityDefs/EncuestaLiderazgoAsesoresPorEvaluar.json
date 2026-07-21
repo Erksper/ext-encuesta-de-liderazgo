@@ -23,7 +23,7 @@
         },
         "evaluado": {
             "type": "enum",
-            "options": ["sin_evaluar", "parcial", "evaluado"],
+            "options": ["sin_evaluar", "parcial", "evaluado", "no_aplica"],
             "default": "sin_evaluar"
         },
         "encuestaLiderazgo": {

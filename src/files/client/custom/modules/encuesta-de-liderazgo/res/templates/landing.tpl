@@ -42,9 +42,11 @@
                         </button>
                         {{/if}}
 
+                        {{#if puedeVerReportes}}
                         <button class="el-btn" data-action="verReportes">
                             <i class="fas fa-chart-bar"></i> Reportes
                         </button>
+                        {{/if}}
 
                     {{else}}
 
@@ -54,9 +56,11 @@
                         </button>
                         {{/if}}
 
+                        {{#if puedeVerReportes}}
                         <button class="el-btn" data-action="verReportes">
                             <i class="fas fa-chart-bar"></i> Reportes
                         </button>
+                        {{/if}}
 
                     {{/if}}
 

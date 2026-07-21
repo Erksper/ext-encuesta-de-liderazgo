@@ -13,3 +13,40 @@
     font-weight: 700;
     font-size: 13px;
 }
+
+.el-oficina-group-row td {
+    background: var(--el-color-gray-bg, #F8F9FA) !important;
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--el-color-primary-dark, #9D8B5F);
+    padding: 8px 14px !important;
+}
+
+.el-btn-whatsapp {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 2px solid #25D366;
+    background: #fff;
+    color: #1E8449;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.el-btn-whatsapp:hover:not(:disabled) {
+    background: #25D366;
+    color: #fff;
+}
+
+.el-btn-whatsapp:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border-color: var(--el-color-gray-light, #E6E6E6);
+    color: var(--el-color-gray-medium, #666);
+}

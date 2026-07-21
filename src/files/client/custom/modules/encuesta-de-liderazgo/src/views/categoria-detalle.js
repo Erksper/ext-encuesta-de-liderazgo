@@ -64,11 +64,56 @@ define('encuesta-de-liderazgo:views/categoria-detalle', ['view'], function (Dep)
         },
         
         afterRender: function () {
-            this.mostrarLoadingInicial();
-            this.iniciarCargaDatos();
-            this.$el.find('#btn-volver').on('click', function() {
-                this.volverAEvaluacionGeneral();
+            this._verificarAccesoReporte(function (autorizado) {
+                if (!autorizado) {
+                    this._renderAccesoDenegadoReporte();
+                    return;
+                }
+
+                this.mostrarLoadingInicial();
+                this.iniciarCargaDatos();
+                this.$el.find('#btn-volver').on('click', function() {
+                    this.volverAEvaluacionGeneral();
+                }.bind(this));
             }.bind(this));
+        },
+
+        // Solo gerente/director/coordinador/casa nacional (o admin) pueden ver reportes.
+        _verificarAccesoReporte: function (callback) {
+            var user = this.getUser();
+
+            if (user.isAdmin()) {
+                callback(true);
+                return;
+            }
+
+            this.getModelFactory().create('User', function (userModel) {
+                userModel.id = user.id;
+                userModel.fetch({relations: {roles: true}}).then(function () {
+                    var roles = Object.values(userModel.get('rolesNames') || {}).map(function (r) {
+                        return r.toLowerCase();
+                    });
+                    var permitido = ['gerente', 'director', 'coordinador', 'casa nacional']
+                        .some(function (r) { return roles.includes(r); });
+
+                    callback(permitido);
+                });
+            });
+        },
+
+        _renderAccesoDenegadoReporte: function () {
+            this.$el.html(
+                '<link rel="stylesheet" type="text/css" href="client/custom/modules/encuesta-de-liderazgo/res/css/el-landing.css">' +
+                '<div class="record-container"><div class="row">' +
+                '<div class="col-md-6 col-md-offset-3">' +
+                '<div class="el-acceso-denegado">' +
+                '<div class="el-acceso-icon"><i class="fas fa-lock"></i></div>' +
+                '<h4>Acceso denegado</h4>' +
+                '<p>No tienes permisos para ver los reportes de la encuesta de liderazgo.</p>' +
+                '<a href="#Liderazgo" class="el-btn" style="width:auto; padding:10px 24px; display:inline-flex; margin-top:14px;">' +
+                '<i class="fas fa-arrow-left"></i> Volver</a>' +
+                '</div></div></div></div>'
+            );
         },
 
         mostrarLoadingInicial: function () {

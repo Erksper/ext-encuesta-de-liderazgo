@@ -27,12 +27,8 @@ define('encuesta-de-liderazgo:views/mis-lideres', ['view'], function (View) {
                 }
 
                 if (!resp.periodoActivo) {
-                    this.$container.html(
-                        '<div class="el-lideres-sin-periodo">' +
-                        '<i class="fas fa-calendar-times"></i>' +
-                        'No hay un periodo de encuesta activo en este momento.' +
-                        '</div>'
-                    );
+                    Espo.Ui.warning('No hay un periodo de encuesta activo en este momento.');
+                    this.getRouter().navigate('#Liderazgo', {trigger: true});
                     return;
                 }
 

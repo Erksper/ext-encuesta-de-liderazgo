@@ -1,0 +1,59 @@
+{
+    "fields": {
+        "name": {
+            "type": "varchar",
+            "required": false,
+            "trim": true,
+            "maxLength": 255
+        },
+        "encuestaLiderazgoEncuesta": {
+            "type": "link",
+            "entity": "EncuestaLiderazgoEncuesta",
+            "required": true
+        },
+        "teamOficina": {
+            "type": "link",
+            "entity": "Team",
+            "required": true
+        },
+        "limiteEvaluaciones": {
+            "type": "int",
+            "required": true,
+            "min": 1
+        },
+        "createdAt": {
+            "type": "datetime",
+            "readOnly": true
+        },
+        "modifiedAt": {
+            "type": "datetime",
+            "readOnly": true
+        }
+    },
+    "links": {
+        "encuestaLiderazgoEncuesta": {
+            "type": "belongsTo",
+            "entity": "EncuestaLiderazgoEncuesta",
+            "foreign": "oficinasEspeciales"
+        },
+        "teamOficina": {
+            "type": "belongsTo",
+            "entity": "Team"
+        }
+    },
+    "collection": {
+        "orderBy": "createdAt",
+        "order": "asc"
+    },
+    "indexes": {
+        "encuestaLiderazgoEncuesta": {
+            "columns": ["encuesta_liderazgo_encuesta_id", "deleted"]
+        },
+        "teamOficina": {
+            "columns": ["team_oficina_id", "deleted"]
+        },
+        "periodoOficina": {
+            "columns": ["encuesta_liderazgo_encuesta_id", "team_oficina_id", "deleted"]
+        }
+    }
+}

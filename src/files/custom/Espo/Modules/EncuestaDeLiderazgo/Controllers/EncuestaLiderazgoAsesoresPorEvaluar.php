@@ -36,20 +36,50 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 return ['success' => true, 'periodoActivo' => false, 'data' => []];
             }
 
-            $sql = "SELECT ape.id as id, ape.evaluado as estado,
+            $sql = "SELECT ape.id as id, ape.evaluado as estado, ae.team_asesor_id as oficinaId,
                         u.id as leaderId, u.first_name as firstName, u.last_name as lastName, u.user_name as userName
                     FROM encuesta_liderazgo_asesores_por_evaluar ape
                     INNER JOIN user u ON ape.asesor_encuestado_id = u.id AND u.deleted = 0
+                    LEFT JOIN encuesta_liderazgo_asesores_evaluados ae
+                        ON ae.encuesta_liderazgo_encuesta_id = ape.encuesta_liderazgo_encuesta_id
+                       AND ae.asesor_encuestado_id = ape.asesor_encuestado_id
+                       AND ae.deleted = 0
                     WHERE ape.deleted = 0
                       AND ape.encuesta_liderazgo_encuesta_id = ?
                       AND ape.asesor_asignado_id = ?
+                      AND ape.evaluado != 'no_aplica'
                     ORDER BY FIELD(ape.evaluado, 'parcial', 'sin_evaluar', 'evaluado'), u.first_name, u.last_name";
             $sth = $pdo->prepare($sql);
             $sth->execute([$periodo['id'], $userId]);
             $rows = $sth->fetchAll(\PDO::FETCH_ASSOC);
 
+            $oficinasEspeciales = $this->_obtenerOficinasEspecialesPorPeriodo($periodo['id']);
+
+            // Cuántas evaluaciones ya "comprometió" (parcial o evaluado) este asesor,
+            // por cada oficina especial que le toque.
+            $comprometidosPorOficina = [];
+            foreach ($rows as $row) {
+                $oficinaId = $row['oficinaId'];
+                if (!$oficinaId || !isset($oficinasEspeciales[$oficinaId])) continue;
+                if (in_array($row['estado'], ['parcial', 'evaluado'], true)) {
+                    $comprometidosPorOficina[$oficinaId] = ($comprometidosPorOficina[$oficinaId] ?? 0) + 1;
+                }
+            }
+
             $data = [];
             foreach ($rows as $row) {
+                $oficinaId = $row['oficinaId'];
+
+                // Si la oficina es especial y ya alcanzó el límite de comprometidas,
+                // los "sin_evaluar" restantes de esa oficina ya no se muestran.
+                if ($oficinaId && isset($oficinasEspeciales[$oficinaId]) && $row['estado'] === 'sin_evaluar') {
+                    $limite = $oficinasEspeciales[$oficinaId];
+                    $comprometidos = $comprometidosPorOficina[$oficinaId] ?? 0;
+                    if ($comprometidos >= $limite) {
+                        continue;
+                    }
+                }
+
                 $nombre = trim(($row['firstName'] ?? '') . ' ' . ($row['lastName'] ?? ''));
                 if (empty($nombre)) $nombre = $row['userName'];
 
@@ -70,6 +100,20 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
         } catch (\Exception $e) {
             return ['success' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    private function _obtenerOficinasEspecialesPorPeriodo(string $periodoId): array
+    {
+        $registros = $this->getEntityManager()->getRDBRepository('EncuestaLiderazgoOficinaEspecial')
+            ->where(['encuestaLiderazgoEncuestaId' => $periodoId])
+            ->select(['teamOficinaId', 'limiteEvaluaciones'])
+            ->find();
+
+        $mapa = [];
+        foreach ($registros as $r) {
+            $mapa[$r->get('teamOficinaId')] = (int) $r->get('limiteEvaluaciones');
+        }
+        return $mapa;
     }
 
     private function _esCasaNacional(): bool
@@ -142,17 +186,56 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 return ['success' => true, 'periodoActivo' => false, 'data' => []];
             }
 
-            $sql = "SELECT ape.asesor_asignado_id as userId, COUNT(*) as pendientes
+            $oficinasEspeciales = $this->_obtenerOficinasEspecialesPorPeriodo($periodo['id']);
+
+            // Se agrupa por (evaluador, oficina del líder) para poder aplicar el
+            // límite de oficinas especiales por separado en cada una.
+            $sql = "SELECT ape.asesor_asignado_id as userId, ae.team_asesor_id as oficinaId,
+                        SUM(CASE WHEN ape.evaluado IN ('sin_evaluar', 'parcial') THEN 1 ELSE 0 END) as pendientesRaw,
+                        SUM(CASE WHEN ape.evaluado = 'evaluado' THEN 1 ELSE 0 END) as evaluadoRaw,
+                        COUNT(*) as totalRaw
                     FROM encuesta_liderazgo_asesores_por_evaluar ape
+                    LEFT JOIN encuesta_liderazgo_asesores_evaluados ae
+                        ON ae.encuesta_liderazgo_encuesta_id = ape.encuesta_liderazgo_encuesta_id
+                       AND ae.asesor_encuestado_id = ape.asesor_encuestado_id
+                       AND ae.deleted = 0
                     WHERE ape.deleted = 0
                       AND ape.encuesta_liderazgo_encuesta_id = ?
-                      AND ape.evaluado IN ('sin_evaluar', 'parcial')
-                    GROUP BY ape.asesor_asignado_id
-                    HAVING pendientes > 0
-                    ORDER BY pendientes DESC";
+                      AND ape.evaluado != 'no_aplica'
+                    GROUP BY ape.asesor_asignado_id, ae.team_asesor_id";
             $sth = $pdo->prepare($sql);
             $sth->execute([$periodo['id']]);
-            $filas = $sth->fetchAll(\PDO::FETCH_ASSOC);
+            $filasGrupo = $sth->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Sumar, por evaluador, el total y pendientes "efectivos" de cada oficina
+            // (usando el límite como total si la oficina es especial).
+            $porUsuario = [];
+            foreach ($filasGrupo as $g) {
+                $userId = $g['userId'];
+                $oficinaId = $g['oficinaId'];
+                $evaluadoRaw = (int) $g['evaluadoRaw'];
+
+                if ($oficinaId && isset($oficinasEspeciales[$oficinaId])) {
+                    $limite = $oficinasEspeciales[$oficinaId];
+                    $totalEfectivo = $limite;
+                    $pendientesEfectivo = max($limite - $evaluadoRaw, 0);
+                } else {
+                    $totalEfectivo = (int) $g['totalRaw'];
+                    $pendientesEfectivo = (int) $g['pendientesRaw'];
+                }
+
+                if (!isset($porUsuario[$userId])) {
+                    $porUsuario[$userId] = ['pendientes' => 0, 'total' => 0];
+                }
+                $porUsuario[$userId]['pendientes'] += $pendientesEfectivo;
+                $porUsuario[$userId]['total'] += $totalEfectivo;
+            }
+
+            $filas = [];
+            foreach ($porUsuario as $userId => $c) {
+                if ($c['pendientes'] <= 0) continue;
+                $filas[] = ['userId' => $userId, 'pendientes' => $c['pendientes'], 'total' => $c['total']];
+            }
 
             if (empty($filas)) {
                 return ['success' => true, 'periodoActivo' => true, 'data' => []];
@@ -169,6 +252,18 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 $usuariosPorId[$u['id']] = $u;
             }
 
+            // El teléfono es un campo multi-valor de Espo (no una columna directa),
+            // se obtiene vía el ORM para no depender del esquema interno de esas tablas.
+            $usuariosConTelefono = $this->getEntityManager()->getRDBRepository('User')
+                ->select(['id', 'phoneNumber'])
+                ->where(['id' => $userIds])
+                ->find();
+            foreach ($usuariosConTelefono as $u) {
+                if (isset($usuariosPorId[$u->get('id')])) {
+                    $usuariosPorId[$u->get('id')]['telefono'] = $u->get('phoneNumber');
+                }
+            }
+
             $oficinas = $this->_resolverOficinasPorUsuarios($pdo, $userIds);
 
             $data = [];
@@ -182,10 +277,18 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 $data[] = [
                     'userId' => $fila['userId'],
                     'name' => $nombre,
+                    'telefono' => $u['telefono'] ?? null,
                     'teamName' => $oficina['teamName'] ?? 'Sin oficina asignada',
                     'pendientes' => (int) $fila['pendientes'],
+                    'total' => (int) $fila['total'],
                 ];
             }
+
+            // Agrupar visualmente por oficina: se ordena por oficina y luego por nombre.
+            usort($data, function ($a, $b) {
+                $cmp = strcasecmp($a['teamName'], $b['teamName']);
+                return $cmp !== 0 ? $cmp : strcasecmp($a['name'], $b['name']);
+            });
 
             return ['success' => true, 'periodoActivo' => true, 'data' => $data];
         } catch (Forbidden $e) {
@@ -211,7 +314,80 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
             throw new Forbidden('No tiene permiso para acceder a esta evaluación.');
         }
 
+        if (!$this->_periodoEstaActivo($registro->get('encuestaLiderazgoEncuestaId'))) {
+            throw new Forbidden('El periodo de esta evaluación ya no está activo.');
+        }
+
+        // Si es una evaluación aún no iniciada y su oficina es especial, verificar
+        // que el asesor no haya alcanzado ya su límite de evaluaciones comprometidas.
+        if ($registro->get('evaluado') === 'sin_evaluar') {
+            $this->_verificarLimiteOficinaEspecial($registro);
+        }
+
         return $registro;
+    }
+
+    private function _verificarLimiteOficinaEspecial($registro): void
+    {
+        $periodoId = $registro->get('encuestaLiderazgoEncuestaId');
+        $entityManager = $this->getEntityManager();
+
+        $asesorEvaluado = $entityManager->getRDBRepository('EncuestaLiderazgoAsesoresEvaluados')
+            ->where([
+                'encuestaLiderazgoEncuestaId' => $periodoId,
+                'asesorEncuestadoId' => $registro->get('asesorEncuestadoId'),
+            ])
+            ->findOne();
+
+        $oficinaId = $asesorEvaluado ? $asesorEvaluado->get('teamAsesorId') : null;
+        if (!$oficinaId) {
+            return;
+        }
+
+        $oficinasEspeciales = $this->_obtenerOficinasEspecialesPorPeriodo($periodoId);
+        if (!isset($oficinasEspeciales[$oficinaId])) {
+            return;
+        }
+
+        $limite = $oficinasEspeciales[$oficinaId];
+
+        $comprometidos = $this->_contarComprometidosOficina($periodoId, $registro->get('asesorAsignadoId'), $oficinaId);
+
+        if ($comprometidos >= $limite) {
+            throw new Forbidden('Ya alcanzaste el límite de ' . $limite . ' evaluaciones para esta oficina.');
+        }
+    }
+
+    private function _contarComprometidosOficina(string $periodoId, string $asesorAsignadoId, string $oficinaId): int
+    {
+        $pdo = $this->getEntityManager()->getPDO();
+        $sql = "SELECT COUNT(*) FROM encuesta_liderazgo_asesores_por_evaluar ape
+                INNER JOIN encuesta_liderazgo_asesores_evaluados ae
+                    ON ae.encuesta_liderazgo_encuesta_id = ape.encuesta_liderazgo_encuesta_id
+                   AND ae.asesor_encuestado_id = ape.asesor_encuestado_id
+                   AND ae.deleted = 0
+                WHERE ape.deleted = 0
+                  AND ape.encuesta_liderazgo_encuesta_id = ?
+                  AND ape.asesor_asignado_id = ?
+                  AND ae.team_asesor_id = ?
+                  AND ape.evaluado IN ('parcial', 'evaluado')";
+        $sth = $pdo->prepare($sql);
+        $sth->execute([$periodoId, $asesorAsignadoId, $oficinaId]);
+        return (int) $sth->fetchColumn();
+    }
+
+    private function _periodoEstaActivo(?string $periodoId): bool
+    {
+        if (!$periodoId) {
+            return false;
+        }
+
+        $pdo = $this->getEntityManager()->getPDO();
+        $sql = "SELECT COUNT(*) FROM encuesta_liderazgo_encuesta
+                WHERE id = ? AND deleted = 0 AND fecha_inicio <= CURDATE() AND fecha_fin >= CURDATE()";
+        $sth = $pdo->prepare($sql);
+        $sth->execute([$periodoId]);
+        return (int) $sth->fetchColumn() > 0;
     }
 
     // =========================================================

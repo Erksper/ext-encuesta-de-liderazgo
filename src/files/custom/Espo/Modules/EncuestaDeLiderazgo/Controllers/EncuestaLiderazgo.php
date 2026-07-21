@@ -19,9 +19,29 @@ class EncuestaLiderazgo extends Record
     //  Filtros (todos opcionales, mismos que usaba el frontend):
     //    anio, cla, oficina, usuario
     // =========================================================
+    private function _puedeVerReportes(): bool
+    {
+        if ($this->getUser()->isAdmin()) {
+            return true;
+        }
+
+        $pdo = $this->getEntityManager()->getPDO();
+        $sql = "SELECT COUNT(*) FROM role_user ru
+                INNER JOIN role r ON ru.role_id = r.id AND r.deleted = 0
+                WHERE ru.user_id = ? AND ru.deleted = 0
+                  AND LOWER(r.name) IN ('gerente', 'director', 'coordinador', 'casa nacional')";
+        $sth = $pdo->prepare($sql);
+        $sth->execute([$this->getUser()->get('id')]);
+        return (int) $sth->fetchColumn() > 0;
+    }
+
     public function getActionGetEstadisticas($params, $data, $request)
     {
         try {
+            if (!$this->_puedeVerReportes()) {
+                return ['success' => false, 'error' => 'No tiene permisos para ver los reportes.'];
+            }
+
             $anio = $request->get('anio');
             $cla = $request->get('cla');
             $oficina = $request->get('oficina');

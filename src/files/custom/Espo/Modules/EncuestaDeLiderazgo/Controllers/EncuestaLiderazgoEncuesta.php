@@ -78,6 +78,7 @@ class EncuestaLiderazgoEncuesta extends Record
                     INNER JOIN role_user ru ON u.id = ru.user_id AND ru.deleted = 0
                     INNER JOIN role r ON ru.role_id = r.id AND r.deleted = 0
                     WHERE u.deleted = 0 AND u.is_active = 1
+                      AND u.user_name NOT REGEXP '^[0-9]+$'
                     GROUP BY u.id
                     HAVING roles REGEXP '(^|,)(gerente|director|coordinador)(,|$)'
                     ORDER BY u.first_name, u.last_name, u.user_name";
@@ -90,21 +91,26 @@ class EncuestaLiderazgoEncuesta extends Record
 
             $lideres = [];
             foreach ($rows as $row) {
+                // Sin oficina real (solo pertenece a CLA/Venezuela): no se evalúa.
+                if (!isset($oficinas[$row['id']])) {
+                    continue;
+                }
+
                 $nombre = trim(($row['firstName'] ?? '') . ' ' . ($row['lastName'] ?? ''));
                 if (empty($nombre)) $nombre = $row['userName'];
 
                 $roles = $row['roles'] ? explode(',', $row['roles']) : [];
                 $rolesFiltrados = array_values(array_intersect($roles, ['gerente', 'director', 'coordinador']));
 
-                $oficina = $oficinas[$row['id']] ?? null;
+                $oficina = $oficinas[$row['id']];
 
                 $lideres[] = [
                     'id' => $row['id'],
                     'name' => $nombre,
                     'userName' => $row['userName'],
                     'roles' => $rolesFiltrados,
-                    'teamId' => $oficina['teamId'] ?? null,
-                    'teamName' => $oficina['teamName'] ?? 'Sin oficina asignada',
+                    'teamId' => $oficina['teamId'],
+                    'teamName' => $oficina['teamName'],
                 ];
             }
 
@@ -131,11 +137,51 @@ class EncuestaLiderazgoEncuesta extends Record
                 ->select(['id', 'asesorEncuestadoId', 'estado'])
                 ->find();
 
+            $pdo = $this->getEntityManager()->getPDO();
+            $sqlYaEvaluados = "SELECT DISTINCT asesor_encuestado_id
+                               FROM encuesta_liderazgo_asesores_por_evaluar
+                               WHERE encuesta_liderazgo_encuesta_id = ? AND deleted = 0 AND evaluado = 'evaluado'";
+            $sthYaEvaluados = $pdo->prepare($sqlYaEvaluados);
+            $sthYaEvaluados->execute([$periodoId]);
+            $lideresYaEvaluados = array_flip($sthYaEvaluados->fetchAll(\PDO::FETCH_COLUMN));
+
             $data = [];
             foreach ($registros as $r) {
                 $data[] = [
                     'userId' => $r->get('asesorEncuestadoId'),
                     'activo' => $r->get('estado') === 'Activo',
+                    'bloqueadoParaDesactivar' => isset($lideresYaEvaluados[$r->get('asesorEncuestadoId')]),
+                ];
+            }
+
+            return ['success' => true, 'data' => $data];
+        } catch (\Exception $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    // =========================================================
+    //  GET: Oficinas marcadas como especiales para un periodo (edición)
+    // =========================================================
+    public function getActionGetOficinasEspeciales($params, $data, $request)
+    {
+        try {
+            $periodoId = $request->get('periodoId');
+            if (!$periodoId) {
+                return ['success' => false, 'error' => 'ID de periodo no proporcionado'];
+            }
+
+            $registros = $this->getEntityManager()
+                ->getRDBRepository('EncuestaLiderazgoOficinaEspecial')
+                ->where(['encuestaLiderazgoEncuestaId' => $periodoId])
+                ->select(['id', 'teamOficinaId', 'limiteEvaluaciones'])
+                ->find();
+
+            $data = [];
+            foreach ($registros as $r) {
+                $data[] = [
+                    'teamId' => $r->get('teamOficinaId'),
+                    'limite' => (int) $r->get('limiteEvaluaciones'),
                 ];
             }
 
@@ -208,6 +254,33 @@ class EncuestaLiderazgoEncuesta extends Record
             $userIds = array_map(function ($l) { return $l->userId; }, $lideres);
             $oficinas = $this->_resolverOficinasPorUsuarios($pdo, $userIds);
 
+            $nombresPorUsuario = [];
+            if (!empty($userIds)) {
+                $placeholdersNombres = implode(',', array_fill(0, count($userIds), '?'));
+                $sqlNombres = "SELECT id, user_name as userName, first_name as firstName, last_name as lastName
+                               FROM user WHERE id IN ($placeholdersNombres)";
+                $sthNombres = $pdo->prepare($sqlNombres);
+                $sthNombres->execute($userIds);
+                foreach ($sthNombres->fetchAll(\PDO::FETCH_ASSOC) as $u) {
+                    $nombre = trim(($u['firstName'] ?? '') . ' ' . ($u['lastName'] ?? ''));
+                    $nombresPorUsuario[$u['id']] = $nombre ?: $u['userName'];
+                }
+            }
+
+            // ── Oficinas especiales: validar y persistir ANTES de tocar cualquier
+            // otro dato (fail-fast si alguna regla no se cumple). ──
+            $oficinasEspecialesPayload = $data->oficinasEspeciales ?? [];
+
+            $lideresActivosPorOficina = [];
+            foreach ($lideres as $l) {
+                if (empty($l->activo)) continue;
+                $teamId = $oficinas[$l->userId]['teamId'] ?? null;
+                if (!$teamId) continue;
+                $lideresActivosPorOficina[$teamId] = ($lideresActivosPorOficina[$teamId] ?? 0) + 1;
+            }
+
+            $this->_guardarOficinasEspeciales($periodoId, $oficinasEspecialesPayload, $lideresActivosPorOficina);
+
             // ── Registros existentes de AsesoresEvaluados para este periodo (bajo volumen) ──
             $existentes = $entityManager->getRDBRepository('EncuestaLiderazgoAsesoresEvaluados')
                 ->where(['encuestaLiderazgoEncuestaId' => $periodoId])
@@ -227,6 +300,18 @@ class EncuestaLiderazgoEncuesta extends Record
             $sthConFilas->execute([$periodoId]);
             $lideresConFilasExistentes = array_flip($sthConFilas->fetchAll(\PDO::FETCH_COLUMN));
 
+            // ── Líderes que YA fueron evaluados (evaluado='evaluado') por al menos
+            // un asesor en este periodo: no se pueden desactivar, para no perder
+            // encuestas reales ya completadas. ──
+            $sqlYaEvaluados = "SELECT DISTINCT asesor_encuestado_id
+                               FROM encuesta_liderazgo_asesores_por_evaluar
+                               WHERE encuesta_liderazgo_encuesta_id = ? AND deleted = 0 AND evaluado = 'evaluado'";
+            $sthYaEvaluados = $pdo->prepare($sqlYaEvaluados);
+            $sthYaEvaluados->execute([$periodoId]);
+            $lideresYaEvaluados = array_flip($sthYaEvaluados->fetchAll(\PDO::FETCH_COLUMN));
+
+            $lideresBloqueadosNombres = [];
+
             $lideresParaDesactivar = []; // userIds
             $lideresParaActivar = [];   // userId => teamId
 
@@ -238,6 +323,12 @@ class EncuestaLiderazgoEncuesta extends Record
 
                 $registro = $existentesPorUsuario[$userId] ?? null;
                 $estadoAnterior = $registro ? $registro->get('estado') : null;
+
+                // No se permite desactivar a un líder que alguien ya evaluó por completo.
+                if ($nuevoEstado === 'Inactivo' && isset($lideresYaEvaluados[$userId])) {
+                    $nuevoEstado = 'Activo';
+                    $lideresBloqueadosNombres[] = $nombresPorUsuario[$userId] ?? $userId;
+                }
 
                 if ($registro) {
                     $registro->set(['estado' => $nuevoEstado, 'teamAsesorId' => $teamId]);
@@ -289,6 +380,7 @@ class EncuestaLiderazgoEncuesta extends Record
                 'success' => true,
                 'periodoId' => $periodoId,
                 'totalAsesoresEvaluar' => $totalActivos,
+                'lideresBloqueados' => $lideresBloqueadosNombres,
             ];
         } catch (Forbidden $e) {
             if ($transaccionAbierta) $pdo->rollBack();
@@ -332,10 +424,13 @@ class EncuestaLiderazgoEncuesta extends Record
 
         // Un solo query para traer todos los miembros de todas las oficinas involucradas.
         $placeholders = implode(',', array_fill(0, count($teamIds), '?'));
-        $sql = "SELECT tu.team_id as teamId, tu.user_id as userId
+        $sql = "SELECT DISTINCT tu.team_id as teamId, tu.user_id as userId
                 FROM team_user tu
                 INNER JOIN user u ON tu.user_id = u.id AND u.deleted = 0 AND u.is_active = 1
-                WHERE tu.team_id IN ($placeholders) AND tu.deleted = 0";
+                INNER JOIN role_user ru ON ru.user_id = u.id AND ru.deleted = 0
+                INNER JOIN role r ON r.id = ru.role_id AND r.deleted = 0 AND LOWER(r.name) = 'asesor'
+                WHERE tu.team_id IN ($placeholders) AND tu.deleted = 0
+                  AND u.user_name NOT REGEXP '^[0-9]+$'";
         $sth = $pdo->prepare($sql);
         $sth->execute($teamIds);
 
@@ -376,6 +471,84 @@ class EncuestaLiderazgoEncuesta extends Record
                     VALUES " . implode(', ', $placeholdersSql);
             $insSth = $pdo->prepare($sql);
             $insSth->execute($params);
+        }
+    }
+
+    /**
+     * Valida y persiste las oficinas especiales de un periodo.
+     * Reglas:
+     *  - El límite debe ser menor a la cantidad de líderes ACTIVOS de esa oficina.
+     *  - Al editar, el límite solo puede subir, nunca bajar.
+     *  - Si una oficina que antes era especial ya no viene en el payload,
+     *    se elimina su registro (deja de ser especial).
+     */
+    private function _guardarOficinasEspeciales(string $periodoId, array $payload, array $lideresActivosPorOficina): void
+    {
+        $entityManager = $this->getEntityManager();
+
+        $existentes = $entityManager->getRDBRepository('EncuestaLiderazgoOficinaEspecial')
+            ->where(['encuestaLiderazgoEncuestaId' => $periodoId])
+            ->find();
+
+        $existentesPorTeam = [];
+        foreach ($existentes as $e) {
+            $existentesPorTeam[$e->get('teamOficinaId')] = $e;
+        }
+
+        $teamIdsEnPayload = [];
+
+        foreach ($payload as $item) {
+            $teamId = $item->teamId ?? null;
+            $limite = isset($item->limite) ? (int) $item->limite : null;
+
+            if (!$teamId || !$limite) {
+                throw new BadRequest('Cada oficina especial debe indicar oficina y límite.');
+            }
+
+            $teamIdsEnPayload[] = $teamId;
+
+            $totalLideres = $lideresActivosPorOficina[$teamId] ?? 0;
+
+            if ($limite < 1) {
+                throw new BadRequest('El límite de evaluaciones debe ser al menos 1.');
+            }
+            if ($totalLideres > 0 && $limite >= $totalLideres) {
+                throw new BadRequest(
+                    'El límite de evaluaciones de una oficina especial debe ser menor a su cantidad de líderes activos (' .
+                    $totalLideres . ').'
+                );
+            }
+
+            $existente = $existentesPorTeam[$teamId] ?? null;
+
+            if ($existente) {
+                $limiteAnterior = (int) $existente->get('limiteEvaluaciones');
+                if ($limite < $limiteAnterior) {
+                    throw new BadRequest(
+                        'El límite de una oficina especial no se puede reducir (actual: ' . $limiteAnterior . ').'
+                    );
+                }
+                if ($limite !== $limiteAnterior) {
+                    $existente->set('limiteEvaluaciones', $limite);
+                    $entityManager->saveEntity($existente);
+                }
+            } else {
+                $nueva = $entityManager->getNewEntity('EncuestaLiderazgoOficinaEspecial');
+                $nueva->set([
+                    'name' => 'Oficina especial ' . $periodoId,
+                    'encuestaLiderazgoEncuestaId' => $periodoId,
+                    'teamOficinaId' => $teamId,
+                    'limiteEvaluaciones' => $limite,
+                ]);
+                $entityManager->saveEntity($nueva);
+            }
+        }
+
+        // Oficinas que dejaron de marcarse como especiales: se eliminan.
+        foreach ($existentesPorTeam as $teamId => $entidad) {
+            if (!in_array($teamId, $teamIdsEnPayload, true)) {
+                $entityManager->removeEntity($entidad);
+            }
         }
     }
 }

@@ -2,10 +2,10 @@
 define('encuesta-de-liderazgo:views/responder', ['view'], function (View) {
 
     var OPCIONES_SELECCION = [
-        {valor: '4', texto: '(4) Siempre'},
-        {valor: '3', texto: '(3) Casi siempre'},
-        {valor: '2', texto: '(2) Pocas veces'},
-        {valor: '1', texto: '(1) Nunca'}
+        {valor: '1', texto: 'Nunca'},
+        {valor: '2', texto: 'Pocas veces'},
+        {valor: '3', texto: 'Casi siempre'},
+        {valor: '4', texto: 'Siempre'}
     ];
 
     return View.extend({
@@ -15,6 +15,11 @@ define('encuesta-de-liderazgo:views/responder', ['view'], function (View) {
         events: {
             'click .el-tab-btn': function (e) {
                 this._activarTab($(e.currentTarget).data('tab'));
+            },
+            'click [data-next-tab]': function (e) {
+                this._activarTab($(e.currentTarget).data('next-tab'));
+                this.$el.closest('.record-container, body').scrollTop(0);
+                window.scrollTo({top: this.$tabsNav.offset() ? this.$tabsNav.offset().top - 20 : 0, behavior: 'smooth'});
             },
             'click .el-opcion-btn': function (e) {
                 if (this.soloLectura) return;
@@ -131,8 +136,18 @@ define('encuesta-de-liderazgo:views/responder', ['view'], function (View) {
                     return this._renderPregunta(p);
                 }.bind(this)).join('');
 
+                var siguienteHtml = '';
+                var siguienteCat = this.categorias[index + 1];
+                if (siguienteCat) {
+                    siguienteHtml = '<div class="el-siguiente-tab-wrap">' +
+                        '<button type="button" class="el-btn" style="width:auto; padding:10px 22px;" data-next-tab="el-tab-' + siguienteCat.id + '">' +
+                        Handlebars.Utils.escapeExpression(siguienteCat.name) + ' <i class="fas fa-arrow-right"></i>' +
+                        '</button></div>';
+                }
+
                 panesHtml += '<div class="el-tab-pane' + (activa ? ' active' : '') + (this.soloLectura ? ' el-encuesta-disabled' : '') + '" id="' + tabId + '">' +
                     preguntasHtml +
+                    siguienteHtml +
                     '</div>';
             }.bind(this));
 
@@ -152,7 +167,10 @@ define('encuesta-de-liderazgo:views/responder', ['view'], function (View) {
                 var opciones = OPCIONES_SELECCION.map(function (op) {
                     var seleccionada = (String(p.seleccion) === op.valor);
                     return '<button type="button" class="el-opcion-btn' + (seleccionada ? ' selected' : '') +
-                        '" data-valor="' + op.valor + '">' + op.texto + '</button>';
+                        '" data-valor="' + op.valor + '">' +
+                        '<span class="el-opcion-numero">' + op.valor + '</span>' +
+                        '<span>' + op.texto + '</span>' +
+                        '</button>';
                 }).join('');
 
                 body = '<div class="el-opciones-seleccion" data-pregunta-id="' + p.id + '" data-tipo="seleccion_simple">' +

@@ -56,6 +56,34 @@
                         </table>
                     </div>
 
+                </div>
+            </div>
+
+            <div class="el-main-card">
+                <div class="el-main-card-body">
+                    <h4 style="margin-top:0;">
+                        <i class="fas fa-star" style="color: var(--el-color-primary);"></i>
+                        Oficinas especiales
+                    </h4>
+                    <p class="el-categoria-info" style="margin-top:-6px;">
+                        En una oficina especial, cada asesor elige y evalúa solo una cantidad limitada de líderes
+                        (en vez de a todos los de su oficina).
+                    </p>
+                    <div class="el-lideres-toolbar">
+                        <input type="text" class="el-lideres-buscador" id="el-buscador-oficinas"
+                               placeholder="Buscar oficina...">
+                        <span class="el-lideres-contador" id="el-oficinas-contador">0 oficinas</span>
+                    </div>
+                    <div class="el-oficinas-especiales-wrap" id="el-oficinas-especiales-wrap">
+                        <p style="text-align:center; color:#666; padding: 10px 0;">Cargando oficinas...</p>
+                    </div>
+                    <div id="el-oficinas-paginacion" style="margin-top:10px;"></div>
+
+                </div>
+            </div>
+
+            <div class="el-main-card">
+                <div class="el-main-card-body">
                     <div class="el-periodo-acciones">
                         <a href="#Liderazgo" class="el-btn" style="width:auto; padding:10px 24px;">
                             <i class="fas fa-arrow-left"></i> Cancelar

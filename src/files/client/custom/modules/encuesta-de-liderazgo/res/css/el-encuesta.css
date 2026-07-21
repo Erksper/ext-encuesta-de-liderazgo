@@ -124,8 +124,12 @@
 .el-opcion-btn {
     flex: 1;
     min-width: 130px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
     text-align: center;
-    padding: 10px 12px;
+    padding: 14px 12px;
     border: 2px solid var(--el-color-gray-light, #E6E6E6);
     border-radius: var(--el-radius-lg, 8px);
     background: #fff;
@@ -133,6 +137,21 @@
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.el-opcion-numero {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--el-color-gray-bg, #F8F9FA);
+    border: 2px solid var(--el-color-gray-light, #E6E6E6);
+    color: var(--el-color-dark, #1A1A1A);
+    font-size: 16px;
+    font-weight: 700;
     transition: all 0.2s ease;
 }
 
@@ -144,6 +163,18 @@
     background: var(--el-color-primary, #B8A279);
     border-color: var(--el-color-primary-dark, #9D8B5F);
     color: #fff;
+}
+
+.el-opcion-btn.selected .el-opcion-numero {
+    background: #fff;
+    border-color: #fff;
+    color: var(--el-color-primary-dark, #9D8B5F);
+}
+
+.el-siguiente-tab-wrap {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 18px;
 }
 
 .el-pregunta-textarea {

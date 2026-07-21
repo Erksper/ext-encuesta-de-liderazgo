@@ -61,6 +61,11 @@
             "entity": "EncuestaLiderazgo",
             "foreign": "periodoEncuesta"
         },
+        "oficinasEspeciales": {
+            "type": "hasMany",
+            "entity": "EncuestaLiderazgoOficinaEspecial",
+            "foreign": "encuestaLiderazgoEncuesta"
+        },
         "createdBy": {
             "type": "belongsTo",
             "entity": "User"

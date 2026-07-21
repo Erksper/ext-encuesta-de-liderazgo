@@ -8,6 +8,14 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
         events: {
             'keyup #el-buscador-pendientes': function (e) {
                 this._filtrar(e.currentTarget.value);
+            },
+            'click [data-action="enviarMensajeMasivo"]': function () {
+                this._enviarMensajeDummy('a todos los asesores con evaluaciones pendientes');
+            },
+            'click [data-action="enviarMensajeIndividual"]': function (e) {
+                var $btn = $(e.currentTarget);
+                if ($btn.prop('disabled')) return;
+                this._enviarMensajeDummy('a ' + $btn.data('nombre'));
             }
         },
 
@@ -92,13 +100,31 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 return;
             }
 
-            var filas = this.datos.map(function (d) {
-                return '<tr data-nombre="' + Handlebars.Utils.escapeExpression((d.name + ' ' + d.teamName).toLowerCase()) + '">' +
+            var filasHtml = '';
+            var oficinaActual = null;
+
+            this.datos.forEach(function (d) {
+                if (d.teamName !== oficinaActual) {
+                    oficinaActual = d.teamName;
+                    filasHtml += '<tr class="el-oficina-group-row">' +
+                        '<td colspan="4"><i class="fas fa-building"></i> ' + Handlebars.Utils.escapeExpression(oficinaActual) + '</td>' +
+                        '</tr>';
+                }
+
+                var tieneTelefono = !!d.telefono;
+
+                filasHtml += '<tr data-nombre="' + Handlebars.Utils.escapeExpression((d.name + ' ' + d.teamName).toLowerCase()) + '">' +
                     '<td>' + Handlebars.Utils.escapeExpression(d.name) + '</td>' +
                     '<td>' + Handlebars.Utils.escapeExpression(d.teamName) + '</td>' +
-                    '<td style="text-align:center;"><span class="el-pendiente-count">' + d.pendientes + '</span></td>' +
+                    '<td style="text-align:center;"><span class="el-pendiente-count">' + d.pendientes + '/' + d.total + '</span></td>' +
+                    '<td style="text-align:center;">' +
+                        '<button class="el-btn-whatsapp" data-action="enviarMensajeIndividual" data-nombre="' +
+                            Handlebars.Utils.escapeExpression(d.name) + '"' + (tieneTelefono ? '' : ' disabled title="Sin teléfono registrado"') + '>' +
+                            '<i class="fab fa-whatsapp"></i> Enviar' +
+                        '</button>' +
+                    '</td>' +
                     '</tr>';
-            }).join('');
+            });
 
             var html =
                 '<div class="record-container"><div class="row"><div class="col-md-10 col-md-offset-1">' +
@@ -106,11 +132,13 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 '<div class="el-lideres-toolbar">' +
                 '<input type="text" class="el-lideres-buscador" id="el-buscador-pendientes" placeholder="Buscar por nombre u oficina...">' +
                 '<span class="el-lideres-contador">' + this.datos.length + ' asesor' + (this.datos.length === 1 ? '' : 'es') + ' con pendientes</span>' +
+                '<button class="el-btn" style="width:auto; padding:8px 18px;" data-action="enviarMensajeMasivo">' +
+                '<i class="fab fa-whatsapp"></i> Enviar Mensaje</button>' +
                 '</div>' +
                 '<div class="el-lideres-tabla-wrap">' +
                 '<table class="el-lideres-tabla">' +
-                '<thead><tr><th>Nombre</th><th>Oficina</th><th style="text-align:center;">Pendientes</th></tr></thead>' +
-                '<tbody id="el-pendientes-tbody">' + filas + '</tbody>' +
+                '<thead><tr><th>Nombre</th><th>Oficina</th><th style="text-align:center;">Pendientes</th><th style="text-align:center;">Mensaje</th></tr></thead>' +
+                '<tbody id="el-pendientes-tbody">' + filasHtml + '</tbody>' +
                 '</table></div></div></div>' +
                 '<div style="text-align:center; margin-top:16px;">' +
                 '<a href="#Liderazgo" class="el-btn" style="width:auto; padding:10px 24px; display:inline-flex;">' +
@@ -123,9 +151,43 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
 
         _filtrar: function (texto) {
             var t = (texto || '').toLowerCase().trim();
-            this.$body.find('#el-pendientes-tbody tr').each(function (i, el) {
+            this.$body.find('#el-pendientes-tbody tr[data-nombre]').each(function (i, el) {
                 var $el = $(el);
                 $el.toggle(!t || ($el.data('nombre') || '').indexOf(t) !== -1);
+            });
+            // Oculta encabezados de oficina que quedaron sin filas visibles.
+            this.$body.find('.el-oficina-group-row').each(function (i, el) {
+                var $header = $(el);
+                var $filas = $header.nextUntil('.el-oficina-group-row', 'tr[data-nombre]');
+                var visible = $filas.filter(function (idx, row) { return $(row).is(':visible'); }).length > 0;
+                $header.toggle(visible);
+            });
+        },
+
+        _enviarMensajeDummy: function (destinatario) {
+            var modalId = 'el-modal-whatsapp';
+            $('#' + modalId).remove();
+
+            var html =
+                '<div class="modal fade" id="' + modalId + '" tabindex="-1" role="dialog">' +
+                '  <div class="modal-dialog" role="document" style="max-width:420px;">' +
+                '    <div class="modal-content" style="border-radius:12px; overflow:hidden;">' +
+                '      <div class="modal-body" style="text-align:center; padding:36px 24px;">' +
+                '        <div style="width:64px; height:64px; border-radius:50%; background:#E9F7EF; display:flex; align-items:center; justify-content:center; margin:0 auto 18px;">' +
+                '          <i class="fab fa-whatsapp" style="font-size:30px; color:#25D366;"></i>' +
+                '        </div>' +
+                '        <h4 style="margin:0 0 8px;">¡Mensaje enviado!</h4>' +
+                '        <p style="color:#666; margin:0 0 22px;">Se envió el mensaje de WhatsApp ' + destinatario + ' (simulado).</p>' +
+                '        <button type="button" class="el-btn" style="width:auto; padding:8px 26px; display:inline-flex;" data-dismiss="modal">Aceptar</button>' +
+                '      </div>' +
+                '    </div>' +
+                '  </div>' +
+                '</div>';
+
+            $('body').append(html);
+            $('#' + modalId).modal('show');
+            $('#' + modalId).on('hidden.bs.modal', function () {
+                $(this).remove();
             });
         }
 
