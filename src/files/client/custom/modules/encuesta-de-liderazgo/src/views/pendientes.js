@@ -9,13 +9,14 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
             'keyup #el-buscador-pendientes': function (e) {
                 this._filtrar(e.currentTarget.value);
             },
-            'click [data-action="enviarMensajeMasivo"]': function () {
-                this._enviarMensajeDummy('a todos los asesores con evaluaciones pendientes');
+            'click [data-action="enviarMensajeMasivo"]': function (e) {
+                if ($(e.currentTarget).prop('disabled')) return;
+                this._enviarMensajeMasivo();
             },
             'click [data-action="enviarMensajeIndividual"]': function (e) {
                 var $btn = $(e.currentTarget);
                 if ($btn.prop('disabled')) return;
-                this._enviarMensajeDummy('a ' + $btn.data('nombre'));
+                this._enviarMensajeIndividual($btn.data('user-id'), $btn.data('nombre'));
             }
         },
 
@@ -38,8 +39,11 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                         return r.toLowerCase();
                     });
                     var esCasaNacional = user.isAdmin() || roles.includes('casa nacional');
+                    var esGerencial = ['gerente', 'director', 'coordinador'].some(function (r) {
+                        return roles.includes(r);
+                    });
 
-                    if (!esCasaNacional) {
+                    if (!esCasaNacional && !esGerencial) {
                         this._renderAccesoDenegado();
                         return;
                     }
@@ -56,7 +60,7 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 '<div class="el-acceso-denegado">' +
                 '<div class="el-acceso-icon"><i class="fas fa-lock"></i></div>' +
                 '<h4>Acceso denegado</h4>' +
-                '<p>Solo Casa Nacional puede ver esta página.</p>' +
+                '<p>No tienes permiso para ver esta página.</p>' +
                 '<a href="#Liderazgo" class="el-btn" style="width:auto; padding:10px 24px; display:inline-flex; margin-top:14px;">' +
                 '<i class="fas fa-arrow-left"></i> Volver</a>' +
                 '</div></div></div></div>'
@@ -82,10 +86,22 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 }
 
                 this.datos = resp.data || [];
+                this.puedeEnviarMensajes = !!resp.puedeEnviarMensajes;
+                this.fechaUltimoEnvioGeneral = resp.fechaUltimoEnvioGeneral || null;
+                this.minutosRestantesEnvioGeneral = resp.minutosRestantesEnvioGeneral || 0;
                 this._renderTabla();
             }.bind(this)).catch(function () {
                 Espo.Ui.error('Ocurrió un error al cargar los pendientes.');
             });
+        },
+
+        _formatearFecha: function (fecha) {
+            if (!fecha) return 'Nunca enviado';
+            try {
+                return this.getDateTime().toDisplayDateTime(fecha);
+            } catch (e) {
+                return fecha;
+            }
         },
 
         _renderTabla: function () {
@@ -107,24 +123,53 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 if (d.teamName !== oficinaActual) {
                     oficinaActual = d.teamName;
                     filasHtml += '<tr class="el-oficina-group-row">' +
-                        '<td colspan="4"><i class="fas fa-building"></i> ' + Handlebars.Utils.escapeExpression(oficinaActual) + '</td>' +
+                        '<td colspan="5"><i class="fas fa-building"></i> ' + Handlebars.Utils.escapeExpression(oficinaActual) + '</td>' +
                         '</tr>';
                 }
 
                 var tieneTelefono = !!d.telefono;
+                var bloqueadoPorTiempo = d.minutosRestantesEnvio > 0;
+                var deshabilitado = !tieneTelefono || bloqueadoPorTiempo;
+                var titulo = !tieneTelefono
+                    ? 'Sin teléfono registrado'
+                    : (bloqueadoPorTiempo ? 'Espera ' + d.minutosRestantesEnvio + ' minuto(s) para reenviar' : '');
+
+                var celdasMensaje = '';
+                if (this.puedeEnviarMensajes) {
+                    celdasMensaje =
+                        '<td style="text-align:center;">' +
+                            '<button class="el-btn-whatsapp" data-action="enviarMensajeIndividual" data-user-id="' + d.userId + '" data-nombre="' +
+                                Handlebars.Utils.escapeExpression(d.name) + '"' + (deshabilitado ? ' disabled' : '') +
+                                (titulo ? ' title="' + titulo + '"' : '') + '>' +
+                                '<i class="fab fa-whatsapp"></i> Enviar' +
+                            '</button>' +
+                        '</td>' +
+                        '<td style="text-align:center;"><span class="el-fecha-envio">' + this._formatearFecha(d.fechaUltimoEnvio) + '</span></td>';
+                }
 
                 filasHtml += '<tr data-nombre="' + Handlebars.Utils.escapeExpression((d.name + ' ' + d.teamName).toLowerCase()) + '">' +
                     '<td>' + Handlebars.Utils.escapeExpression(d.name) + '</td>' +
                     '<td>' + Handlebars.Utils.escapeExpression(d.teamName) + '</td>' +
                     '<td style="text-align:center;"><span class="el-pendiente-count">' + d.pendientes + '/' + d.total + '</span></td>' +
-                    '<td style="text-align:center;">' +
-                        '<button class="el-btn-whatsapp" data-action="enviarMensajeIndividual" data-nombre="' +
-                            Handlebars.Utils.escapeExpression(d.name) + '"' + (tieneTelefono ? '' : ' disabled title="Sin teléfono registrado"') + '>' +
-                            '<i class="fab fa-whatsapp"></i> Enviar' +
-                        '</button>' +
-                    '</td>' +
+                    celdasMensaje +
                     '</tr>';
-            });
+            }.bind(this));
+
+            var botonMasivoHtml = '';
+            if (this.puedeEnviarMensajes) {
+                var bloqueadoGeneral = this.minutosRestantesEnvioGeneral > 0;
+                botonMasivoHtml =
+                    '<div style="display:flex; align-items:center; gap:10px;">' +
+                    '<button class="el-btn" style="width:auto; padding:8px 18px;" data-action="enviarMensajeMasivo"' +
+                        (bloqueadoGeneral ? ' disabled title="Espera ' + this.minutosRestantesEnvioGeneral + ' minuto(s) para reenviar"' : '') + '>' +
+                    '<i class="fab fa-whatsapp"></i> Enviar Mensaje</button>' +
+                    '<span class="el-fecha-envio">Último envío: ' + this._formatearFecha(this.fechaUltimoEnvioGeneral) + '</span>' +
+                    '</div>';
+            }
+
+            var encabezadoMensaje = this.puedeEnviarMensajes
+                ? '<th style="text-align:center;">Mensaje</th><th style="text-align:center;">Último envío</th>'
+                : '';
 
             var html =
                 '<div class="record-container"><div class="row"><div class="col-md-10 col-md-offset-1">' +
@@ -132,12 +177,11 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 '<div class="el-lideres-toolbar">' +
                 '<input type="text" class="el-lideres-buscador" id="el-buscador-pendientes" placeholder="Buscar por nombre u oficina...">' +
                 '<span class="el-lideres-contador">' + this.datos.length + ' asesor' + (this.datos.length === 1 ? '' : 'es') + ' con pendientes</span>' +
-                '<button class="el-btn" style="width:auto; padding:8px 18px;" data-action="enviarMensajeMasivo">' +
-                '<i class="fab fa-whatsapp"></i> Enviar Mensaje</button>' +
+                botonMasivoHtml +
                 '</div>' +
                 '<div class="el-lideres-tabla-wrap">' +
                 '<table class="el-lideres-tabla">' +
-                '<thead><tr><th>Nombre</th><th>Oficina</th><th style="text-align:center;">Pendientes</th><th style="text-align:center;">Mensaje</th></tr></thead>' +
+                '<thead><tr><th>Nombre</th><th>Oficina</th><th style="text-align:center;">Pendientes</th>' + encabezadoMensaje + '</tr></thead>' +
                 '<tbody id="el-pendientes-tbody">' + filasHtml + '</tbody>' +
                 '</table></div></div></div>' +
                 '<div style="text-align:center; margin-top:16px;">' +
@@ -164,7 +208,56 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
             });
         },
 
-        _enviarMensajeDummy: function (destinatario) {
+        _enviarMensajeMasivo: function () {
+            this.notify('Enviando...');
+
+            Espo.Ajax.postRequest('EncuestaLiderazgoAsesoresPorEvaluar/action/enviarMensajeMasivo', {}).then(function (resp) {
+                this.notify(false);
+
+                if (!resp || !resp.success) {
+                    Espo.Ui.error((resp && resp.error) || 'No se pudo enviar el mensaje.');
+                    return;
+                }
+
+                this._mostrarModalEnviado('a todos los asesores con evaluaciones pendientes (' + resp.totalNotificados + ')');
+                this._cargarPendientes();
+            }.bind(this)).catch(function (xhr) {
+                this.notify(false);
+                this._mostrarErrorAjax(xhr, 'No se pudo enviar el mensaje.');
+            }.bind(this));
+        },
+
+        _enviarMensajeIndividual: function (userId, nombre) {
+            this.notify('Enviando...');
+
+            Espo.Ajax.postRequest('EncuestaLiderazgoAsesoresPorEvaluar/action/enviarMensajeIndividual', {
+                userId: userId
+            }).then(function (resp) {
+                this.notify(false);
+
+                if (!resp || !resp.success) {
+                    Espo.Ui.error((resp && resp.error) || 'No se pudo enviar el mensaje.');
+                    return;
+                }
+
+                this._mostrarModalEnviado('a ' + nombre);
+                this._cargarPendientes();
+            }.bind(this)).catch(function (xhr) {
+                this.notify(false);
+                this._mostrarErrorAjax(xhr, 'No se pudo enviar el mensaje.');
+            }.bind(this));
+        },
+
+        _mostrarErrorAjax: function (xhr, mensajePorDefecto) {
+            var mensaje = mensajePorDefecto;
+            try {
+                var body = JSON.parse(xhr.responseText);
+                if (body && body.error) mensaje = body.error;
+            } catch (e) {}
+            Espo.Ui.error(mensaje);
+        },
+
+        _mostrarModalEnviado: function (destinatario) {
             var modalId = 'el-modal-whatsapp';
             $('#' + modalId).remove();
 

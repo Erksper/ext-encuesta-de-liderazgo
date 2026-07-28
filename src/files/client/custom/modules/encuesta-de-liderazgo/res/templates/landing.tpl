@@ -32,11 +32,13 @@
                         </button>
                         {{/if}}
 
+                        {{#if esAsesor}}
                         <button class="el-btn" data-action="contestarEncuesta">
                             <i class="fas fa-clipboard-list"></i> Contestar Encuesta
                         </button>
+                        {{/if}}
 
-                        {{#if esCasaNacional}}
+                        {{#if puedeVerPendientes}}
                         <button class="el-btn" data-action="verPendientes">
                             <i class="fas fa-users-cog"></i> Ver Pendientes
                         </button>

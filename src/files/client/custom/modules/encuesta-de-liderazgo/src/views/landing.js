@@ -28,7 +28,9 @@ define('encuesta-de-liderazgo:views/landing', ['view'], function (View) {
             var user = this.getUser();
 
             this.esCasaNacional = false;
+            this.esAsesor = false;
             this.puedeVerReportes = false;
+            this.puedeVerPendientes = false;
             this.periodoActivo = false;
             this.periodoId = null;
             this.fechaInicioDisplay = null;
@@ -44,8 +46,11 @@ define('encuesta-de-liderazgo:views/landing', ['view'], function (View) {
                     });
 
                     this.esCasaNacional = roles.includes('casa nacional');
+                    this.esAsesor = roles.includes('asesor');
                     this.puedeVerReportes = user.isAdmin() || ['gerente', 'director', 'coordinador', 'casa nacional']
                         .some(function (r) { return roles.includes(r); });
+                    this.puedeVerPendientes = user.isAdmin() || this.esCasaNacional ||
+                        ['gerente', 'director', 'coordinador'].some(function (r) { return roles.includes(r); });
 
                     this.verificarPeriodoActivo();
                 }.bind(this));
@@ -88,7 +93,9 @@ define('encuesta-de-liderazgo:views/landing', ['view'], function (View) {
         data: function () {
             return {
                 esCasaNacional: this.esCasaNacional,
+                esAsesor: this.esAsesor,
                 puedeVerReportes: this.puedeVerReportes,
+                puedeVerPendientes: this.puedeVerPendientes,
                 periodoActivo: this.periodoActivo,
                 fechaInicioDisplay: this.fechaInicioDisplay,
                 fechaFinDisplay: this.fechaFinDisplay

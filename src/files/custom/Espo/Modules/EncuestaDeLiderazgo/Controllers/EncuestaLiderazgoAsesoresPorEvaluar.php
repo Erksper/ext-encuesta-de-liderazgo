@@ -162,16 +162,191 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
         return $resultado;
     }
 
+    // Minutos mínimos entre envíos. TEMPORAL para pruebas: luego pasará a ser
+    // algo como 1440 (1 día).
+    const MINUTOS_ENTRE_MENSAJES = 5;
+
+    private function _minutosRestantes(?string $fechaUltimoEnvio): int
+    {
+        if (!$fechaUltimoEnvio) {
+            return 0;
+        }
+
+        $ultimo = new \DateTime($fechaUltimoEnvio);
+        $ahora = new \DateTime();
+        $diffMinutos = ($ahora->getTimestamp() - $ultimo->getTimestamp()) / 60;
+
+        $restantes = self::MINUTOS_ENTRE_MENSAJES - $diffMinutos;
+        return $restantes > 0 ? (int) ceil($restantes) : 0;
+    }
+
     // =========================================================
-    //  GET: Asesores con evaluaciones pendientes (Casa Nacional)
+    //  POST: Enviar mensaje masivo (a todos los que tienen pendientes)
+    // =========================================================
+    public function postActionEnviarMensajeMasivo($params, $data, $request)
+    {
+        try {
+            if (!$this->_esCasaNacional()) {
+                throw new Forbidden('No tiene permisos para enviar mensajes.');
+            }
+
+            $entityManager = $this->getEntityManager();
+            $pdo = $entityManager->getPDO();
+
+            $periodo = $this->_obtenerPeriodoActivoEntidad();
+            if (!$periodo) {
+                throw new BadRequest('No hay un periodo activo.');
+            }
+
+            $minutosRestantes = $this->_minutosRestantes($periodo->get('fechaUltimoEnvioGeneral'));
+            if ($minutosRestantes > 0) {
+                throw new BadRequest('Debes esperar ' . $minutosRestantes . ' minuto(s) más para volver a enviar el mensaje general.');
+            }
+
+            $ahora = date('Y-m-d H:i:s');
+
+            $periodo->set('fechaUltimoEnvioGeneral', $ahora);
+            $entityManager->saveEntity($periodo);
+
+            // Actualizar la fecha individual de todos los que tienen pendientes.
+            $sql = "SELECT DISTINCT asesor_asignado_id as userId
+                    FROM encuesta_liderazgo_asesores_por_evaluar
+                    WHERE deleted = 0 AND encuesta_liderazgo_encuesta_id = ?
+                      AND evaluado IN ('sin_evaluar', 'parcial')";
+            $sth = $pdo->prepare($sql);
+            $sth->execute([$periodo->get('id')]);
+            $userIds = $sth->fetchAll(\PDO::FETCH_COLUMN);
+
+            foreach ($userIds as $userId) {
+                $this->_actualizarFechaMensajeIndividual($periodo->get('id'), $userId, $ahora);
+            }
+
+            return [
+                'success' => true,
+                'fechaUltimoEnvioGeneral' => $ahora,
+                'totalNotificados' => count($userIds),
+            ];
+        } catch (Forbidden $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        } catch (BadRequest $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        } catch (\Exception $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    // =========================================================
+    //  POST: Enviar mensaje individual a un asesor puntual
+    // =========================================================
+    public function postActionEnviarMensajeIndividual($params, $data, $request)
+    {
+        try {
+            if (!$this->_esCasaNacional()) {
+                throw new Forbidden('No tiene permisos para enviar mensajes.');
+            }
+
+            $userId = $data->userId ?? null;
+            if (!$userId) {
+                throw new BadRequest('No se indicó el asesor a notificar.');
+            }
+
+            $periodo = $this->_obtenerPeriodoActivoEntidad();
+            if (!$periodo) {
+                throw new BadRequest('No hay un periodo activo.');
+            }
+
+            $registro = $this->getEntityManager()->getRDBRepository('EncuestaLiderazgoMensajeEvaluador')
+                ->where(['encuestaLiderazgoEncuestaId' => $periodo->get('id'), 'usuarioId' => $userId])
+                ->findOne();
+
+            $minutosRestantes = $this->_minutosRestantes($registro ? $registro->get('fechaUltimoEnvio') : null);
+            if ($minutosRestantes > 0) {
+                throw new BadRequest('Debes esperar ' . $minutosRestantes . ' minuto(s) más para volver a enviarle un mensaje a este asesor.');
+            }
+
+            $ahora = date('Y-m-d H:i:s');
+            $this->_actualizarFechaMensajeIndividual($periodo->get('id'), $userId, $ahora);
+
+            return ['success' => true, 'fechaUltimoEnvio' => $ahora];
+        } catch (Forbidden $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        } catch (BadRequest $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        } catch (\Exception $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    private function _obtenerPeriodoActivoEntidad()
+    {
+        $pdo = $this->getEntityManager()->getPDO();
+        $sql = "SELECT id FROM encuesta_liderazgo_encuesta
+                WHERE deleted = 0 AND fecha_inicio <= CURDATE() AND fecha_fin >= CURDATE()
+                ORDER BY fecha_inicio DESC LIMIT 1";
+        $sth = $pdo->prepare($sql);
+        $sth->execute();
+        $id = $sth->fetchColumn();
+
+        if (!$id) {
+            return null;
+        }
+
+        return $this->getEntityManager()->getEntity('EncuestaLiderazgoEncuesta', $id);
+    }
+
+    private function _actualizarFechaMensajeIndividual(string $periodoId, string $userId, string $fecha): void
+    {
+        $entityManager = $this->getEntityManager();
+
+        $registro = $entityManager->getRDBRepository('EncuestaLiderazgoMensajeEvaluador')
+            ->where(['encuestaLiderazgoEncuestaId' => $periodoId, 'usuarioId' => $userId])
+            ->findOne();
+
+        if ($registro) {
+            $registro->set('fechaUltimoEnvio', $fecha);
+            $entityManager->saveEntity($registro);
+        } else {
+            $nuevo = $entityManager->getNewEntity('EncuestaLiderazgoMensajeEvaluador');
+            $nuevo->set([
+                'name' => 'Mensaje ' . $userId,
+                'encuestaLiderazgoEncuestaId' => $periodoId,
+                'usuarioId' => $userId,
+                'fechaUltimoEnvio' => $fecha,
+            ]);
+            $entityManager->saveEntity($nuevo);
+        }
+    }
+
+    private function _puedeVerPendientes(): bool
+    {
+        if ($this->_esCasaNacional()) {
+            return true;
+        }
+
+        $pdo = $this->getEntityManager()->getPDO();
+        $sql = "SELECT COUNT(*) FROM role_user ru
+                INNER JOIN role r ON ru.role_id = r.id AND r.deleted = 0
+                WHERE ru.user_id = ? AND ru.deleted = 0
+                  AND LOWER(r.name) IN ('gerente', 'director', 'coordinador')";
+        $sth = $pdo->prepare($sql);
+        $sth->execute([$this->getUser()->get('id')]);
+        return (int) $sth->fetchColumn() > 0;
+    }
+
+    // =========================================================
+    //  GET: Asesores con evaluaciones pendientes
+    //  Casa Nacional ve todas las oficinas; gerente/director/coordinador
+    //  solo ven los asesores de su propia oficina.
     //  Solo nombre + cantidad pendiente, NO cuáles líderes faltan.
     // =========================================================
     public function getActionGetAsesoresPendientes($params, $data, $request)
     {
         try {
-            if (!$this->_esCasaNacional()) {
+            if (!$this->_puedeVerPendientes()) {
                 throw new Forbidden('No tiene permisos para ver esta información.');
             }
+
+            $esCasaNacional = $this->_esCasaNacional();
 
             $pdo = $this->getEntityManager()->getPDO();
 
@@ -266,6 +441,18 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
 
             $oficinas = $this->_resolverOficinasPorUsuarios($pdo, $userIds);
 
+            // Fechas de último mensaje individual enviado a cada uno.
+            $fechasMensajeIndividual = [];
+            if ($esCasaNacional) {
+                $mensajesRepo = $this->getEntityManager()->getRDBRepository('EncuestaLiderazgoMensajeEvaluador')
+                    ->where(['encuestaLiderazgoEncuestaId' => $periodo['id'], 'usuarioId' => $userIds])
+                    ->select(['usuarioId', 'fechaUltimoEnvio'])
+                    ->find();
+                foreach ($mensajesRepo as $m) {
+                    $fechasMensajeIndividual[$m->get('usuarioId')] = $m->get('fechaUltimoEnvio');
+                }
+            }
+
             $data = [];
             foreach ($filas as $fila) {
                 $u = $usuariosPorId[$fila['userId']] ?? null;
@@ -273,15 +460,29 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 if (empty($nombre)) $nombre = $u['userName'] ?? 'Desconocido';
 
                 $oficina = $oficinas[$fila['userId']] ?? null;
+                $fechaMensaje = $fechasMensajeIndividual[$fila['userId']] ?? null;
 
                 $data[] = [
                     'userId' => $fila['userId'],
                     'name' => $nombre,
                     'telefono' => $u['telefono'] ?? null,
+                    'teamId' => $oficina['teamId'] ?? null,
                     'teamName' => $oficina['teamName'] ?? 'Sin oficina asignada',
                     'pendientes' => (int) $fila['pendientes'],
                     'total' => (int) $fila['total'],
+                    'fechaUltimoEnvio' => $fechaMensaje,
+                    'minutosRestantesEnvio' => $this->_minutosRestantes($fechaMensaje),
                 ];
+            }
+
+            // Gerente/director/coordinador: acotar a la propia oficina únicamente.
+            if (!$esCasaNacional) {
+                $miOficina = $this->_resolverOficinasPorUsuarios($pdo, [$this->getUser()->get('id')]);
+                $miTeamId = $miOficina[$this->getUser()->get('id')]['teamId'] ?? null;
+
+                $data = array_values(array_filter($data, function ($d) use ($miTeamId) {
+                    return $miTeamId && $d['teamId'] === $miTeamId;
+                }));
             }
 
             // Agrupar visualmente por oficina: se ordena por oficina y luego por nombre.
@@ -290,7 +491,22 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 return $cmp !== 0 ? $cmp : strcasecmp($a['name'], $b['name']);
             });
 
-            return ['success' => true, 'periodoActivo' => true, 'data' => $data];
+            $fechaUltimoEnvioGeneral = null;
+            $minutosRestantesGeneral = 0;
+            if ($esCasaNacional) {
+                $periodoEntidad = $this->getEntityManager()->getEntity('EncuestaLiderazgoEncuesta', $periodo['id']);
+                $fechaUltimoEnvioGeneral = $periodoEntidad ? $periodoEntidad->get('fechaUltimoEnvioGeneral') : null;
+                $minutosRestantesGeneral = $this->_minutosRestantes($fechaUltimoEnvioGeneral);
+            }
+
+            return [
+                'success' => true,
+                'periodoActivo' => true,
+                'data' => $data,
+                'puedeEnviarMensajes' => $esCasaNacional,
+                'fechaUltimoEnvioGeneral' => $fechaUltimoEnvioGeneral,
+                'minutosRestantesEnvioGeneral' => $minutosRestantesGeneral,
+            ];
         } catch (Forbidden $e) {
             return ['success' => false, 'error' => $e->getMessage()];
         } catch (\Exception $e) {

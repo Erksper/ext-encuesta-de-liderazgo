@@ -1,0 +1,50 @@
+{
+    "fields": {
+        "name": {
+            "type": "varchar",
+            "required": false,
+            "trim": true,
+            "maxLength": 255
+        },
+        "encuestaLiderazgoEncuesta": {
+            "type": "link",
+            "entity": "EncuestaLiderazgoEncuesta",
+            "required": true
+        },
+        "usuario": {
+            "type": "link",
+            "entity": "User",
+            "required": true
+        },
+        "fechaUltimoEnvio": {
+            "type": "datetime",
+            "required": false
+        }
+    },
+    "links": {
+        "encuestaLiderazgoEncuesta": {
+            "type": "belongsTo",
+            "entity": "EncuestaLiderazgoEncuesta",
+            "foreign": "mensajesEvaluadores"
+        },
+        "usuario": {
+            "type": "belongsTo",
+            "entity": "User"
+        }
+    },
+    "collection": {
+        "orderBy": "fechaUltimoEnvio",
+        "order": "desc"
+    },
+    "indexes": {
+        "encuestaLiderazgoEncuesta": {
+            "columns": ["encuesta_liderazgo_encuesta_id", "deleted"]
+        },
+        "usuario": {
+            "columns": ["usuario_id", "deleted"]
+        },
+        "periodoUsuario": {
+            "columns": ["encuesta_liderazgo_encuesta_id", "usuario_id", "deleted"]
+        }
+    }
+}

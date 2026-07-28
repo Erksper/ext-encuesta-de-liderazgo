@@ -22,6 +22,10 @@
             "type": "int",
             "default": 0
         },
+        "fechaUltimoEnvioGeneral": {
+            "type": "datetime",
+            "required": false
+        },
         "createdAt": {
             "type": "datetime",
             "readOnly": true
@@ -64,6 +68,11 @@
         "oficinasEspeciales": {
             "type": "hasMany",
             "entity": "EncuestaLiderazgoOficinaEspecial",
+            "foreign": "encuestaLiderazgoEncuesta"
+        },
+        "mensajesEvaluadores": {
+            "type": "hasMany",
+            "entity": "EncuestaLiderazgoMensajeEvaluador",
             "foreign": "encuestaLiderazgoEncuesta"
         },
         "createdBy": {
