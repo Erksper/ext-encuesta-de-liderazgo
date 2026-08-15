@@ -180,6 +180,105 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
         return $restantes > 0 ? (int) ceil($restantes) : 0;
     }
 
+    /**
+     * Normaliza un teléfono al formato que espera la API de WhatsApp
+     * (solo dígitos, con código de país 58 adelante).
+     * - Ya viene como 58 + 10 dígitos (con o sin '+'): se usa tal cual.
+     * - Viene en formato local venezolano (0 + 10 dígitos): se le cambia
+     *   el '0' inicial por '58'.
+     * - Cualquier otro formato: caso especial no soportado, se omite (null).
+     */
+    private function _normalizarTelefono(?string $raw): ?string
+    {
+        if (!$raw) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D/', '', $raw);
+
+        if (preg_match('/^58\d{10}$/', $digits)) {
+            return $digits;
+        }
+
+        if (preg_match('/^0\d{10}$/', $digits)) {
+            return '58' . substr($digits, 1);
+        }
+
+        return null;
+    }
+
+    /**
+     * Envío real a la API de WhatsApp (Meta Graph API), usando una plantilla
+     * aprobada. $parametros es una lista ordenada de valores para las
+     * variables {{1}}, {{2}}, ... del cuerpo de la plantilla.
+     */
+    private function _enviarWhatsapp(string $telefono, string $template, array $parametros): array
+    {
+        $token = $this->getConfig()->get('whatsappToken');
+        $phoneNumberId = $this->getConfig()->get('whatsappPhoneNumberId');
+
+        if (!$token || !$phoneNumberId) {
+            return [
+                'success' => false,
+                'error' => 'Falta configurar whatsappToken / whatsappPhoneNumberId en config-internal.php.',
+            ];
+        }
+
+        $parametrosBody = [];
+        foreach ($parametros as $i => $valor) {
+            $parametrosBody[] = [
+                'type' => 'text',
+                'parameter_name' => (string) ($i + 1),
+                'text' => (string) $valor,
+            ];
+        }
+
+        $body = [
+            'messaging_product' => 'whatsapp',
+            'recipient_type' => 'individual',
+            'to' => $telefono,
+            'type' => 'template',
+            'template' => [
+                'name' => $template,
+                'language' => ['code' => 'ES'],
+                'components' => [
+                    ['type' => 'BODY', 'parameters' => $parametrosBody],
+                ],
+            ],
+        ];
+
+        $url = 'https://graph.facebook.com/v24.0/' . $phoneNumberId . '/messages';
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Bearer ' . $token,
+            'Content-Type: application/json',
+        ]);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+
+        $respuesta = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $errorCurl = curl_error($ch);
+        curl_close($ch);
+
+        if ($errorCurl) {
+            return ['success' => false, 'error' => 'Error de conexión: ' . $errorCurl];
+        }
+
+        $respuestaData = json_decode($respuesta, true);
+
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return ['success' => true];
+        }
+
+        $mensajeError = $respuestaData['error']['message'] ?? ('Error HTTP ' . $httpCode);
+        return ['success' => false, 'error' => $mensajeError];
+    }
+
     // =========================================================
     //  POST: Enviar mensaje masivo (a todos los que tienen pendientes)
     // =========================================================
@@ -203,28 +302,70 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 throw new BadRequest('Debes esperar ' . $minutosRestantes . ' minuto(s) más para volver a enviar el mensaje general.');
             }
 
+            // Primer envío general de este periodo -> plantilla de invitación.
+            // Envíos siguientes -> plantilla de recordatorio.
+            $esPrimerEnvio = !$periodo->get('fechaUltimoEnvioGeneral');
+            $template = $esPrimerEnvio ? 'evaluacin_de_liderazgo_c21' : 'amable_recordatorio_evaluacin_de_liderazgo_c21';
+            $fechaFinFormateada = date('Y/m/d', strtotime($periodo->get('fechaFin')));
+
+            // $sql = "SELECT DISTINCT asesor_asignado_id as userId
+            //         FROM encuesta_liderazgo_asesores_por_evaluar
+            //         WHERE deleted = 0 AND encuesta_liderazgo_encuesta_id = ?
+            //           AND evaluado IN ('sin_evaluar', 'parcial')";
+            // $sth = $pdo->prepare($sql);
+            // $sth->execute([$periodo->get('id')]);
+            // $userIds = $sth->fetchAll(\PDO::FETCH_COLUMN);
+
+            // ==========================================================
+            // === SOLO PRUEBAS: quitar este bloque para producción =====
+            // Reemplaza la lista real por un puñado de IDs de prueba.
+            $userIds = [
+                '67f41b1f91ab648fd',
+                '6904d2624fd6a66da',
+                '67f90fa8216aa4c61',
+                '2146',
+            ];
+            // === FIN BLOQUE DE PRUEBAS =================================
+            // ==========================================================
+
             $ahora = date('Y-m-d H:i:s');
+            $enviados = 0;
+            $omitidosPorTelefono = 0;
+            $fallidos = 0;
+
+            foreach ($userIds as $userId) {
+                $usuario = $entityManager->getEntity('User', $userId);
+                if (!$usuario) continue;
+
+                $telefono = $this->_normalizarTelefono($usuario->get('phoneNumber'));
+                if (!$telefono) {
+                    $omitidosPorTelefono++;
+                    continue;
+                }
+
+                $nombre = $usuario->get('name');
+                $parametros = $esPrimerEnvio ? [$nombre] : [$nombre, $fechaFinFormateada];
+
+                $resultado = $this->_enviarWhatsapp($telefono, $template, $parametros);
+
+                if ($resultado['success']) {
+                    $enviados++;
+                    $this->_actualizarFechaMensajeIndividual($periodo->get('id'), $userId, $ahora);
+                } else {
+                    $fallidos++;
+                }
+            }
 
             $periodo->set('fechaUltimoEnvioGeneral', $ahora);
             $entityManager->saveEntity($periodo);
 
-            // Actualizar la fecha individual de todos los que tienen pendientes.
-            $sql = "SELECT DISTINCT asesor_asignado_id as userId
-                    FROM encuesta_liderazgo_asesores_por_evaluar
-                    WHERE deleted = 0 AND encuesta_liderazgo_encuesta_id = ?
-                      AND evaluado IN ('sin_evaluar', 'parcial')";
-            $sth = $pdo->prepare($sql);
-            $sth->execute([$periodo->get('id')]);
-            $userIds = $sth->fetchAll(\PDO::FETCH_COLUMN);
-
-            foreach ($userIds as $userId) {
-                $this->_actualizarFechaMensajeIndividual($periodo->get('id'), $userId, $ahora);
-            }
-
             return [
                 'success' => true,
                 'fechaUltimoEnvioGeneral' => $ahora,
-                'totalNotificados' => count($userIds),
+                'totalNotificados' => $enviados,
+                'omitidosPorTelefono' => $omitidosPorTelefono,
+                'fallidos' => $fallidos,
+                'plantillaUsada' => $template,
             ];
         } catch (Forbidden $e) {
             return ['success' => false, 'error' => $e->getMessage()];
@@ -237,6 +378,7 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
 
     // =========================================================
     //  POST: Enviar mensaje individual a un asesor puntual
+    //  (siempre usa la plantilla de recordatorio)
     // =========================================================
     public function postActionEnviarMensajeIndividual($params, $data, $request)
     {
@@ -255,6 +397,10 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 throw new BadRequest('No hay un periodo activo.');
             }
 
+            if (!$periodo->get('fechaUltimoEnvioGeneral')) {
+                throw new BadRequest('Primero hay que enviar el mensaje general al menos una vez.');
+            }
+
             $registro = $this->getEntityManager()->getRDBRepository('EncuestaLiderazgoMensajeEvaluador')
                 ->where(['encuestaLiderazgoEncuestaId' => $periodo->get('id'), 'usuarioId' => $userId])
                 ->findOne();
@@ -262,6 +408,27 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
             $minutosRestantes = $this->_minutosRestantes($registro ? $registro->get('fechaUltimoEnvio') : null);
             if ($minutosRestantes > 0) {
                 throw new BadRequest('Debes esperar ' . $minutosRestantes . ' minuto(s) más para volver a enviarle un mensaje a este asesor.');
+            }
+
+            $usuario = $this->getEntityManager()->getEntity('User', $userId);
+            if (!$usuario) {
+                throw new BadRequest('El asesor indicado no existe.');
+            }
+
+            $telefono = $this->_normalizarTelefono($usuario->get('phoneNumber'));
+            if (!$telefono) {
+                throw new BadRequest('El teléfono de este asesor no es válido o no está registrado.');
+            }
+
+            $fechaFinFormateada = date('Y/m/d', strtotime($periodo->get('fechaFin')));
+            $resultado = $this->_enviarWhatsapp(
+                $telefono,
+                'amable_recordatorio_evaluacin_de_liderazgo_c21',
+                [$usuario->get('name'), $fechaFinFormateada]
+            );
+
+            if (!$resultado['success']) {
+                throw new BadRequest('No se pudo enviar el mensaje: ' . $resultado['error']);
             }
 
             $ahora = date('Y-m-d H:i:s');

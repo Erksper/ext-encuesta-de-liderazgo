@@ -129,10 +129,13 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
 
                 var tieneTelefono = !!d.telefono;
                 var bloqueadoPorTiempo = d.minutosRestantesEnvio > 0;
-                var deshabilitado = !tieneTelefono || bloqueadoPorTiempo;
-                var titulo = !tieneTelefono
-                    ? 'Sin teléfono registrado'
-                    : (bloqueadoPorTiempo ? 'Espera ' + d.minutosRestantesEnvio + ' minuto(s) para reenviar' : '');
+                var sinPrimerEnvioGeneral = !this.fechaUltimoEnvioGeneral;
+                var deshabilitado = !tieneTelefono || bloqueadoPorTiempo || sinPrimerEnvioGeneral;
+                var titulo = sinPrimerEnvioGeneral
+                    ? 'Primero hay que enviar el mensaje general al menos una vez'
+                    : (!tieneTelefono
+                        ? 'Sin teléfono registrado'
+                        : (bloqueadoPorTiempo ? 'Espera ' + d.minutosRestantesEnvio + ' minuto(s) para reenviar' : ''));
 
                 var celdasMensaje = '';
                 if (this.puedeEnviarMensajes) {
@@ -219,7 +222,11 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                     return;
                 }
 
-                this._mostrarModalEnviado('a todos los asesores con evaluaciones pendientes (' + resp.totalNotificados + ')');
+                var detalle = resp.totalNotificados + ' enviado(s)';
+                if (resp.omitidosPorTelefono) detalle += ', ' + resp.omitidosPorTelefono + ' omitido(s) por teléfono inválido';
+                if (resp.fallidos) detalle += ', ' + resp.fallidos + ' fallido(s)';
+
+                this._mostrarModalEnviado('a los asesores con evaluaciones pendientes (' + detalle + ')');
                 this._cargarPendientes();
             }.bind(this)).catch(function (xhr) {
                 this.notify(false);
@@ -270,7 +277,7 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 '          <i class="fab fa-whatsapp" style="font-size:30px; color:#25D366;"></i>' +
                 '        </div>' +
                 '        <h4 style="margin:0 0 8px;">¡Mensaje enviado!</h4>' +
-                '        <p style="color:#666; margin:0 0 22px;">Se envió el mensaje de WhatsApp ' + destinatario + ' (simulado).</p>' +
+                '        <p style="color:#666; margin:0 0 22px;">Se envió el mensaje de WhatsApp ' + destinatario + '.</p>' +
                 '        <button type="button" class="el-btn" style="width:auto; padding:8px 26px; display:inline-flex;" data-dismiss="modal">Aceptar</button>' +
                 '      </div>' +
                 '    </div>' +
