@@ -10,18 +10,21 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 this._filtrar(e.currentTarget.value);
             },
             'click [data-action="enviarMensajeMasivo"]': function (e) {
-                if ($(e.currentTarget).prop('disabled')) return;
+                if ($(e.currentTarget).prop('disabled') || this._enviandoMasivo) return;
                 this._enviarMensajeMasivo();
             },
             'click [data-action="enviarMensajeIndividual"]': function (e) {
                 var $btn = $(e.currentTarget);
-                if ($btn.prop('disabled')) return;
-                this._enviarMensajeIndividual($btn.data('user-id'), $btn.data('nombre'));
+                var userId = $btn.data('user-id');
+                if ($btn.prop('disabled') || this._enviandoIndividualIds[userId]) return;
+                this._enviarMensajeIndividual(userId, $btn.data('nombre'));
             }
         },
 
         setup: function () {
             this.datos = [];
+            this._enviandoMasivo = false;
+            this._enviandoIndividualIds = {};
         },
 
         afterRender: function () {
@@ -89,6 +92,7 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 this.puedeEnviarMensajes = !!resp.puedeEnviarMensajes;
                 this.fechaUltimoEnvioGeneral = resp.fechaUltimoEnvioGeneral || null;
                 this.minutosRestantesEnvioGeneral = resp.minutosRestantesEnvioGeneral || 0;
+                this.tiempoRestanteEnvioGeneralTexto = resp.tiempoRestanteEnvioGeneralTexto || '0m';
                 this._renderTabla();
             }.bind(this)).catch(function () {
                 Espo.Ui.error('Ocurrió un error al cargar los pendientes.');
@@ -135,7 +139,7 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                     ? 'Primero hay que enviar el mensaje general al menos una vez'
                     : (!tieneTelefono
                         ? 'Sin teléfono registrado'
-                        : (bloqueadoPorTiempo ? 'Espera ' + d.minutosRestantesEnvio + ' minuto(s) para reenviar' : ''));
+                        : (bloqueadoPorTiempo ? 'Espera ' + d.tiempoRestanteEnvioTexto + ' para reenviar' : ''));
 
                 var celdasMensaje = '';
                 if (this.puedeEnviarMensajes) {
@@ -164,7 +168,7 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 botonMasivoHtml =
                     '<div style="display:flex; align-items:center; gap:10px;">' +
                     '<button class="el-btn" style="width:auto; padding:8px 18px;" data-action="enviarMensajeMasivo"' +
-                        (bloqueadoGeneral ? ' disabled title="Espera ' + this.minutosRestantesEnvioGeneral + ' minuto(s) para reenviar"' : '') + '>' +
+                        (bloqueadoGeneral ? ' disabled title="Espera ' + this.tiempoRestanteEnvioGeneralTexto + ' para reenviar"' : '') + '>' +
                     '<i class="fab fa-whatsapp"></i> Enviar Mensaje</button>' +
                     '<span class="el-fecha-envio">Último envío: ' + this._formatearFecha(this.fechaUltimoEnvioGeneral) + '</span>' +
                     '</div>';
@@ -212,13 +216,17 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
         },
 
         _enviarMensajeMasivo: function () {
+            this._enviandoMasivo = true;
+            this.$body.find('[data-action="enviarMensajeMasivo"]').prop('disabled', true);
             this.notify('Enviando...');
 
             Espo.Ajax.postRequest('EncuestaLiderazgoAsesoresPorEvaluar/action/enviarMensajeMasivo', {}).then(function (resp) {
                 this.notify(false);
+                this._enviandoMasivo = false;
 
                 if (!resp || !resp.success) {
                     Espo.Ui.error((resp && resp.error) || 'No se pudo enviar el mensaje.');
+                    this._cargarPendientes();
                     return;
                 }
 
@@ -230,20 +238,26 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 this._cargarPendientes();
             }.bind(this)).catch(function (xhr) {
                 this.notify(false);
+                this._enviandoMasivo = false;
                 this._mostrarErrorAjax(xhr, 'No se pudo enviar el mensaje.');
+                this._cargarPendientes();
             }.bind(this));
         },
 
         _enviarMensajeIndividual: function (userId, nombre) {
+            this._enviandoIndividualIds[userId] = true;
+            this.$body.find('[data-action="enviarMensajeIndividual"][data-user-id="' + userId + '"]').prop('disabled', true);
             this.notify('Enviando...');
 
             Espo.Ajax.postRequest('EncuestaLiderazgoAsesoresPorEvaluar/action/enviarMensajeIndividual', {
                 userId: userId
             }).then(function (resp) {
                 this.notify(false);
+                delete this._enviandoIndividualIds[userId];
 
                 if (!resp || !resp.success) {
                     Espo.Ui.error((resp && resp.error) || 'No se pudo enviar el mensaje.');
+                    this._cargarPendientes();
                     return;
                 }
 
@@ -251,7 +265,9 @@ define('encuesta-de-liderazgo:views/pendientes', ['view'], function (View) {
                 this._cargarPendientes();
             }.bind(this)).catch(function (xhr) {
                 this.notify(false);
+                delete this._enviandoIndividualIds[userId];
                 this._mostrarErrorAjax(xhr, 'No se pudo enviar el mensaje.');
+                this._cargarPendientes();
             }.bind(this));
         },
 

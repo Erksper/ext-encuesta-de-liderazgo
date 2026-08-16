@@ -18,6 +18,12 @@
             <div class="el-periodo-band">
                 <i class="fas fa-calendar-check"></i>
                 Periodo activo: <strong>{{fechaInicioDisplay}}</strong> al <strong>{{fechaFinDisplay}}</strong>
+                <p class="el-anonimato-texto">
+                    <i class="fas fa-user-secret"></i>
+                    Selecciona un líder en la siguiente ventana para responder a su evaluación de manera totalmente anónima,
+                    ten la confianza de que nadie podrá saber que contestaste. Este módulo se hizo especialmente pensando
+                    en el anonimato y no guarda ningún tipo de acceso o credenciales al contestar las encuestas.
+                </p>
             </div>
             {{/if}}
 

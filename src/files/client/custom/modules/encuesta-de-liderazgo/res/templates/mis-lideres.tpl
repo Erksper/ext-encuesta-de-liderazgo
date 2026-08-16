@@ -15,6 +15,13 @@
     <div class="row">
         <div class="col-md-8 col-md-offset-2">
 
+            <div class="el-periodo-band">
+                <i class="fas fa-user-secret"></i>
+                Selecciona un líder para responder a su evaluación de manera totalmente anónima, ten la confianza
+                de que nadie podrá saber que contestaste. Este módulo se hizo especialmente pensando en el anonimato
+                y no guarda ningún tipo de acceso o credenciales al contestar las encuestas.
+            </div>
+
             <div class="el-main-card">
                 <div class="el-main-card-body" id="el-lideres-container">
                     <div style="text-align:center; padding: 40px;">

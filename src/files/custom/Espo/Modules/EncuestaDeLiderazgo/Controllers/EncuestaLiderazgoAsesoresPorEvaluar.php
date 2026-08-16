@@ -162,11 +162,12 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
         return $resultado;
     }
 
-    // Minutos mínimos entre envíos. TEMPORAL para pruebas: luego pasará a ser
-    // algo como 1440 (1 día).
-    const MINUTOS_ENTRE_MENSAJES = 5;
+    // Minutos mínimos entre envíos. TEMPORAL para pruebas: luego pasarán a ser
+    // varios días (ej: 4320 = 3 días). Son independientes entre sí.
+    const MINUTOS_ENTRE_MENSAJES_GENERAL = 5;
+    const MINUTOS_ENTRE_MENSAJES_INDIVIDUAL = 5;
 
-    private function _minutosRestantes(?string $fechaUltimoEnvio): int
+    private function _minutosRestantes(?string $fechaUltimoEnvio, int $minutosEspera): int
     {
         if (!$fechaUltimoEnvio) {
             return 0;
@@ -176,8 +177,30 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
         $ahora = new \DateTime();
         $diffMinutos = ($ahora->getTimestamp() - $ultimo->getTimestamp()) / 60;
 
-        $restantes = self::MINUTOS_ENTRE_MENSAJES - $diffMinutos;
+        $restantes = $minutosEspera - $diffMinutos;
         return $restantes > 0 ? (int) ceil($restantes) : 0;
+    }
+
+    /**
+     * Convierte minutos a un texto "Xd Xh Xm" (omitiendo unidades en cero),
+     * para mostrar tiempos de espera largos de forma legible.
+     */
+    private function _formatearMinutos(int $minutos): string
+    {
+        if ($minutos <= 0) {
+            return '0m';
+        }
+
+        $dias = intdiv($minutos, 1440);
+        $horas = intdiv($minutos % 1440, 60);
+        $mins = $minutos % 60;
+
+        $partes = [];
+        if ($dias > 0) $partes[] = $dias . 'd';
+        if ($horas > 0) $partes[] = $horas . 'h';
+        if ($mins > 0 || empty($partes)) $partes[] = $mins . 'm';
+
+        return implode(' ', $partes);
     }
 
     /**
@@ -297,9 +320,9 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 throw new BadRequest('No hay un periodo activo.');
             }
 
-            $minutosRestantes = $this->_minutosRestantes($periodo->get('fechaUltimoEnvioGeneral'));
+            $minutosRestantes = $this->_minutosRestantes($periodo->get('fechaUltimoEnvioGeneral'), self::MINUTOS_ENTRE_MENSAJES_GENERAL);
             if ($minutosRestantes > 0) {
-                throw new BadRequest('Debes esperar ' . $minutosRestantes . ' minuto(s) más para volver a enviar el mensaje general.');
+                throw new BadRequest('Debes esperar ' . $this->_formatearMinutos($minutosRestantes) . ' más para volver a enviar el mensaje general.');
             }
 
             // Primer envío general de este periodo -> plantilla de invitación.
@@ -308,22 +331,21 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
             $template = $esPrimerEnvio ? 'evaluacin_de_liderazgo_c21' : 'amable_recordatorio_evaluacin_de_liderazgo_c21';
             $fechaFinFormateada = date('Y/m/d', strtotime($periodo->get('fechaFin')));
 
-            // $sql = "SELECT DISTINCT asesor_asignado_id as userId
-            //         FROM encuesta_liderazgo_asesores_por_evaluar
-            //         WHERE deleted = 0 AND encuesta_liderazgo_encuesta_id = ?
-            //           AND evaluado IN ('sin_evaluar', 'parcial')";
-            // $sth = $pdo->prepare($sql);
-            // $sth->execute([$periodo->get('id')]);
-            // $userIds = $sth->fetchAll(\PDO::FETCH_COLUMN);
+            $sql = "SELECT DISTINCT asesor_asignado_id as userId
+                    FROM encuesta_liderazgo_asesores_por_evaluar
+                    WHERE deleted = 0 AND encuesta_liderazgo_encuesta_id = ?
+                      AND evaluado IN ('sin_evaluar', 'parcial')";
+            $sth = $pdo->prepare($sql);
+            $sth->execute([$periodo->get('id')]);
+            $userIds = $sth->fetchAll(\PDO::FETCH_COLUMN);
 
             // ==========================================================
             // === SOLO PRUEBAS: quitar este bloque para producción =====
             // Reemplaza la lista real por un puñado de IDs de prueba.
             $userIds = [
-                '67f41b1f91ab648fd',
-                '6904d2624fd6a66da',
-                '67f90fa8216aa4c61',
-                '2146',
+                'ID_DE_PRUEBA_1',
+                'ID_DE_PRUEBA_2',
+                'ID_DE_PRUEBA_3',
             ];
             // === FIN BLOQUE DE PRUEBAS =================================
             // ==========================================================
@@ -334,6 +356,10 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
             $fallidos = 0;
 
             foreach ($userIds as $userId) {
+                // La fecha individual se actualiza para TODOS los de la lista al enviar
+                // el general, hayan recibido el mensaje o no (arranca su cooldown igual).
+                $this->_actualizarFechaMensajeIndividual($periodo->get('id'), $userId, $ahora);
+
                 $usuario = $entityManager->getEntity('User', $userId);
                 if (!$usuario) continue;
 
@@ -350,7 +376,6 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
 
                 if ($resultado['success']) {
                     $enviados++;
-                    $this->_actualizarFechaMensajeIndividual($periodo->get('id'), $userId, $ahora);
                 } else {
                     $fallidos++;
                 }
@@ -405,9 +430,12 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 ->where(['encuestaLiderazgoEncuestaId' => $periodo->get('id'), 'usuarioId' => $userId])
                 ->findOne();
 
-            $minutosRestantes = $this->_minutosRestantes($registro ? $registro->get('fechaUltimoEnvio') : null);
+            $minutosRestantes = $this->_minutosRestantes(
+                $registro ? $registro->get('fechaUltimoEnvio') : null,
+                self::MINUTOS_ENTRE_MENSAJES_INDIVIDUAL
+            );
             if ($minutosRestantes > 0) {
-                throw new BadRequest('Debes esperar ' . $minutosRestantes . ' minuto(s) más para volver a enviarle un mensaje a este asesor.');
+                throw new BadRequest('Debes esperar ' . $this->_formatearMinutos($minutosRestantes) . ' más para volver a enviarle un mensaje a este asesor.');
             }
 
             $usuario = $this->getEntityManager()->getEntity('User', $userId);
@@ -629,6 +657,8 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 $oficina = $oficinas[$fila['userId']] ?? null;
                 $fechaMensaje = $fechasMensajeIndividual[$fila['userId']] ?? null;
 
+                $minutosRestantesInd = $this->_minutosRestantes($fechaMensaje, self::MINUTOS_ENTRE_MENSAJES_INDIVIDUAL);
+
                 $data[] = [
                     'userId' => $fila['userId'],
                     'name' => $nombre,
@@ -638,7 +668,8 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                     'pendientes' => (int) $fila['pendientes'],
                     'total' => (int) $fila['total'],
                     'fechaUltimoEnvio' => $fechaMensaje,
-                    'minutosRestantesEnvio' => $this->_minutosRestantes($fechaMensaje),
+                    'minutosRestantesEnvio' => $minutosRestantesInd,
+                    'tiempoRestanteEnvioTexto' => $this->_formatearMinutos($minutosRestantesInd),
                 ];
             }
 
@@ -660,10 +691,12 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
 
             $fechaUltimoEnvioGeneral = null;
             $minutosRestantesGeneral = 0;
+            $tiempoRestanteGeneralTexto = '0m';
             if ($esCasaNacional) {
                 $periodoEntidad = $this->getEntityManager()->getEntity('EncuestaLiderazgoEncuesta', $periodo['id']);
                 $fechaUltimoEnvioGeneral = $periodoEntidad ? $periodoEntidad->get('fechaUltimoEnvioGeneral') : null;
-                $minutosRestantesGeneral = $this->_minutosRestantes($fechaUltimoEnvioGeneral);
+                $minutosRestantesGeneral = $this->_minutosRestantes($fechaUltimoEnvioGeneral, self::MINUTOS_ENTRE_MENSAJES_GENERAL);
+                $tiempoRestanteGeneralTexto = $this->_formatearMinutos($minutosRestantesGeneral);
             }
 
             return [
@@ -673,6 +706,7 @@ class EncuestaLiderazgoAsesoresPorEvaluar extends Record
                 'puedeEnviarMensajes' => $esCasaNacional,
                 'fechaUltimoEnvioGeneral' => $fechaUltimoEnvioGeneral,
                 'minutosRestantesEnvioGeneral' => $minutosRestantesGeneral,
+                'tiempoRestanteEnvioGeneralTexto' => $tiempoRestanteGeneralTexto,
             ];
         } catch (Forbidden $e) {
             return ['success' => false, 'error' => $e->getMessage()];
