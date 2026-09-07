@@ -85,6 +85,30 @@
                 </div>
             </div>
 
+            <!-- ============================================================ -->
+            <!-- BLOQUE TEMPORAL DE PRUEBA - QUITAR ANTES DE PASAR A PRODUCCIÓN -->
+            <!-- Permite correr los jobs manualmente en ambientes sin cron.    -->
+            <!-- Borrar este bloque completo + el que está en admin.js con el -->
+            <!-- mismo comentario + Controllers/EncuestaLiderazgoJobPrueba.php-->
+            <!-- ============================================================ -->
+            <div class="panel panel-warning">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        <i class="fas fa-flask"></i> [TEMPORAL] Ejecutar Jobs Manualmente (solo pruebas)
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <p class="text-muted">Este panel es solo para el ambiente de prueba (sin cron). Quitar antes de producción.</p>
+                    <button class="btn btn-warning" data-action="ejecutarCorregirAsesores" style="margin-right: 10px;">
+                        <i class="fas fa-sync"></i> Correr "Corregir Asesores Por Evaluar"
+                    </button>
+                    <button class="btn btn-danger" data-action="ejecutarAnonimizarVencidos">
+                        <i class="fas fa-user-secret"></i> Correr "Anonimizar Periodos Vencidos"
+                    </button>
+                </div>
+            </div>
+            <!-- ===================== FIN BLOQUE TEMPORAL ===================== -->
+
             <!-- Botón de Volver -->
             <div class="text-center" style="margin-top: 20px;">
                 <a href="#Liderazgo" class="btn btn-default">

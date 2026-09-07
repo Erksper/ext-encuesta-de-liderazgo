@@ -5,7 +5,11 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
         template: 'encuesta-de-liderazgo:admin',
         
         events: {
-            'click [data-action="cargarCSV"]': 'procesarCSV'
+            'click [data-action="cargarCSV"]': 'procesarCSV',
+            // ===== INICIO TEMPORAL DE PRUEBA - quitar junto con el bloque de admin.tpl =====
+            'click [data-action="ejecutarCorregirAsesores"]': 'ejecutarJobCorregirAsesores',
+            'click [data-action="ejecutarAnonimizarVencidos"]': 'ejecutarJobAnonimizarVencidos'
+            // ===== FIN TEMPORAL DE PRUEBA =====
         },
         
         setup: function () {
@@ -711,6 +715,54 @@ define('encuesta-de-liderazgo:views/admin', ['view'], function (Dep) {
             }.bind(this));
         },
         
+        // ================================================================
+        // INICIO BLOQUE TEMPORAL DE PRUEBA - QUITAR ANTES DE PRODUCCIÓN
+        // Corre los jobs manualmente vía AJAX, para ambientes sin cron.
+        // Quitar estos 2 métodos + el bloque de eventos de arriba + el
+        // panel correspondiente en admin.tpl + el controlador
+        // Controllers/EncuestaLiderazgoJobPrueba.php
+        // ================================================================
+        ejecutarJobCorregirAsesores: function () {
+            if (!confirm('¿Ejecutar "Corregir Asesores Por Evaluar" ahora? Esto modificará datos reales del periodo activo.')) {
+                return;
+            }
+            this.wait(true);
+            Espo.Ui.notify('Ejecutando job...', 'info');
+
+            Espo.Ajax.postRequest('EncuestaLiderazgoJobPrueba/action/corregirAsesores').then(function (response) {
+                this.wait(false);
+                if (response && response.success) {
+                    Espo.Ui.success(response.message || 'Job ejecutado correctamente.');
+                } else {
+                    Espo.Ui.error((response && response.message) || 'Error ejecutando el job.');
+                }
+            }.bind(this)).catch(function () {
+                this.wait(false);
+                Espo.Ui.error('Error ejecutando el job.');
+            }.bind(this));
+        },
+
+        ejecutarJobAnonimizarVencidos: function () {
+            if (!confirm('¿Ejecutar "Anonimizar Periodos Vencidos" ahora? Esto BORRA datos físicamente y es IRREVERSIBLE. ¿Continuar?')) {
+                return;
+            }
+            this.wait(true);
+            Espo.Ui.notify('Ejecutando job...', 'info');
+
+            Espo.Ajax.postRequest('EncuestaLiderazgoJobPrueba/action/anonimizarVencidos').then(function (response) {
+                this.wait(false);
+                if (response && response.success) {
+                    Espo.Ui.success(response.message || 'Job ejecutado correctamente.');
+                } else {
+                    Espo.Ui.error((response && response.message) || 'Error ejecutando el job.');
+                }
+            }.bind(this)).catch(function () {
+                this.wait(false);
+                Espo.Ui.error('Error ejecutando el job.');
+            }.bind(this));
+        },
+        // ===================== FIN BLOQUE TEMPORAL =====================
+
         buscarUsuarioPorNombre: function(nombre) {
             return new Promise(function(resolve, reject) {
                 if (!nombre || !nombre.trim()) {

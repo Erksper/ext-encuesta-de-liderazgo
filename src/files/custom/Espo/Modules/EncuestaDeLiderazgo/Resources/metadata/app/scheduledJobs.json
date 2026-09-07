@@ -1,0 +1,14 @@
+{
+    "Corregir Asesores Por Evaluar": {
+        "jobClassName": "Espo\\Modules\\EncuestaDeLiderazgo\\Jobs\\CorregirAsesoresPorEvaluar",
+        "name": "Corregir Asesores Por Evaluar (roles / oficinas)",
+        "isSystem": false,
+        "scheduling": "0 */6 * * *"
+    },
+    "Anonimizar Periodos Vencidos": {
+        "jobClassName": "Espo\\Modules\\EncuestaDeLiderazgo\\Jobs\\AnonimizarPeriodosVencidos",
+        "name": "Anonimizar Periodos Vencidos (1 mes despues de cerrados)",
+        "isSystem": false,
+        "scheduling": "0 3 * * *"
+    }
+}
